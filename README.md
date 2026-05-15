@@ -3,45 +3,37 @@ My personal LLM
 
 # Initial overview of the project architecture:
 
-
-                ┌───────────────────┐
-                │   Obsidian Vault  │
-                └─────────┬─────────┘
-                          │
-                    File Watcher
-                          │
-                ┌─────────▼─────────┐
-                │  Ingestion Engine │
-                └─────────┬─────────┘
-                          │
-                Markdown Processing
-                          │
-                     Chunking
-                          │
-                ┌─────────▼─────────┐
-                │ Embedding Service │
-                └─────────┬─────────┘
-                          │
-                ┌─────────▼─────────┐
-                │   Vector Database │
-                └─────────┬─────────┘
-                          │
-                 Retrieval Pipeline
-                          │
-          ┌───────────────┴──────────────┐
-          │                              │
-     Prompt Guard                 Metadata Filters
-          │                              │
-          └───────────────┬──────────────┘
-                          │
-                ┌─────────▼─────────┐
-                │   LLM Gateway     │
-                └─────────┬─────────┘
-                          │
-                ┌─────────▼─────────┐
-                │ FastAPI Backend   │
-                └─────────┬─────────┘
-                          │
-                ┌─────────▼─────────┐
-                │   Next.js Client  │
-                └───────────────────┘
+                ┌──────────────────┐
+                │Vue/Nuxt Frontend │
+                │ Chat Interface   │
+                └────────┬─────────┘
+                         │ HTTP/WebSocket
+                         ▼
+                ┌──────────────────┐
+                │ FastAPI Backend  │
+                │ API Gateway      │
+                └────────┬─────────┘
+                         │
+        ┌────────────────┼────────────────┐
+        ▼                ▼                ▼
+┌─────────────┐  ┌──────────────┐  ┌──────────────┐
+│ RAG Service │  │ Auth/Security│  │ Chat Memory  │
+└──────┬──────┘  └──────────────┘  └──────────────┘
+       │
+       ▼
+┌────────────────────┐
+│ LlamaIndex Pipeline│
+└─────────┬──────────┘
+          │
+   ┌──────┼───────────┐
+   ▼                  ▼
+┌───────────┐   ┌───────────┐
+│ Qdrant DB │   │ Ollama    │
+│ embeddings│   │ local LLM │
+└───────────┘   └───────────┘
+          ▲
+          │
+┌────────────────────┐
+│ Obsidian Vault     │
+│ Markdown Notes     │
+└────────────────────┘
