@@ -1,0 +1,25 @@
+{
+  "name": "second-brain-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "typecheck": "nuxt typecheck",
+    "lint": "eslint . --ext .vue,.ts,.tsx"
+  },
+  "dependencies": {
+    "nuxt": "^3.14.0",
+    "@pinia/nuxt": "^0.9.0",
+    "pinia": "^2.3.0",
+    "@vueuse/nuxt": "^12.0.0",
+    "@vueuse/core": "^12.0.0"
+  },
+  "devDependencies": {
+    "@nuxtjs/tailwindcss": "^6.13.1",
+    "typescript": "^5.7.2",
+    "vue-tsc": "^2.2.0"
+  }
+}

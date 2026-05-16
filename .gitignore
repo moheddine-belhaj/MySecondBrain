@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+
+# Env
+.env
+.env.example
+.env.*
+
+
+# Node
+node_modules/
+.nuxt/
+.output/
+
+# Vault — personal notes never committed
+vault/*.md
+vault/.obsidian/
+
+# Docker volumes
+docker/data/
+
+# OS
+.DS_Store
+.claude/

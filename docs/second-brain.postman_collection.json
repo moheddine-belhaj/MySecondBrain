@@ -1,0 +1,340 @@
+{
+  "info": {
+    "name": "Second Brain API",
+    "description": "Local-first AI Second Brain — FastAPI backend.\n\nBase URL is stored in the `base_url` collection variable (default: http://localhost:8000).\n\nChange it once in Collection → Variables if you run on a different port.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Returns {\"status\": \"ok\", \"version\": \"0.1.0\"}.\nUse this to verify the server is up before running other requests."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Body has status ok', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('ok');",
+                  "  pm.expect(body.version).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Chat",
+      "item": [
+        {
+          "name": "Send Message (single turn)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messages\": [\n    { \"role\": \"user\", \"content\": \"What is the Zettelkasten method?\" }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "chat"]
+            },
+            "description": "Sends a single user message. The stub echoes the message back.\nAfter Task 3 is implemented this will return a RAG-grounded answer with citations."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Response has required fields', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('id');",
+                  "  pm.expect(body.role).to.eql('assistant');",
+                  "  pm.expect(body.content).to.be.a('string');",
+                  "  pm.expect(body.sources).to.be.an('array');",
+                  "  pm.expect(body.created_at).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Send Message (multi turn)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messages\": [\n    { \"role\": \"user\", \"content\": \"What is the Zettelkasten method?\" },\n    { \"role\": \"assistant\", \"content\": \"Zettelkasten is a note-taking system...\" },\n    { \"role\": \"user\", \"content\": \"How does it compare to the PARA method?\" }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "chat"]
+            },
+            "description": "Multi-turn conversation. The full message history is passed so the model can use context."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns assistant response', () => {",
+                  "  pm.expect(pm.response.json().role).to.eql('assistant');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Validation — empty messages (expect 422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messages\": []\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "chat"]
+            },
+            "description": "Empty messages array — Pydantic min_length=1 should reject it with 422."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 422 Unprocessable Entity', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Validation — missing role (expect 422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messages\": [\n    { \"content\": \"No role field here\" }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "chat"]
+            },
+            "description": "Missing required `role` field — Pydantic should reject with 422."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 422 Unprocessable Entity', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Ingest",
+      "item": [
+        {
+          "name": "Trigger Ingestion",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ingest",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "ingest"]
+            },
+            "description": "Triggers a vault ingestion run. Returns current status.\nAfter Task 3 the pipeline will read the vault, chunk notes, embed them, and upsert into Qdrant."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Response has IngestStatus shape', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(['pending','running','completed','failed']).to.include(body.status);",
+                  "  pm.expect(body.total_notes).to.be.a('number');",
+                  "  pm.expect(body.processed_notes).to.be.a('number');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Ingestion Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ingest/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "ingest", "status"]
+            },
+            "description": "Returns the current ingestion job status. Poll this after triggering an ingest."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has status field', () => {",
+                  "  pm.expect(pm.response.json()).to.have.property('status');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Search",
+      "item": [
+        {
+          "name": "Semantic Search",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/search?q=what is the Zettelkasten method",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "search"],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "what is the Zettelkasten method",
+                  "description": "Natural language search query"
+                }
+              ]
+            },
+            "description": "Semantic search over the vault. Returns an empty array until Task 4 (Qdrant retrieval) is implemented."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Validation — empty query (expect 422)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/search?q=",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "search"],
+              "query": [
+                { "key": "q", "value": "" }
+              ]
+            },
+            "description": "Empty q param — min_length=1 should reject with 422."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Validation — missing query param (expect 422)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/search",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "search"]
+            },
+            "description": "No q param at all — FastAPI should reject with 422."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
