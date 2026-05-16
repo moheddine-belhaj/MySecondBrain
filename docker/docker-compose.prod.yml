@@ -1,0 +1,29 @@
+# Production overrides — apply on top of docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Changes from dev:
+#   - backend and frontend use the `prod` build target (no --reload, optimised build)
+#   - source code is NOT bind-mounted (image is self-contained)
+#   - debug and Swagger UI are disabled
+#   - HMR ports are not exposed
+#   - backend runs 2 uvicorn workers
+
+services:
+  backend:
+    build:
+      target: prod
+    volumes:
+      - ../vault:/app/vault:ro           # vault still needed at runtime
+    environment:
+      DEBUG: "false"
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      target: prod
+    volumes: []                          # no bind mounts in prod
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production

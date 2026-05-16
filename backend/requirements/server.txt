@@ -1,0 +1,9 @@
+# Minimal install to run the FastAPI server locally.
+# Does NOT include the AI/ML stack (LlamaIndex, Qdrant client, Ollama client)
+# — those are in base.txt and are only needed once Task 4 is implemented.
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+pydantic==2.10.3
+pydantic-settings==2.6.1
+python-multipart==0.0.20
+httpx==0.28.1
