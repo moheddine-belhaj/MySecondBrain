@@ -81,3 +81,4 @@ cd frontend && npm install && npm run dev
 
 - Run the model in the VPS
 - Use open sources API
+- k8s cours
