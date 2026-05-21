@@ -27,3 +27,32 @@ class ScanResponse(BaseModel):
     scan_duration_ms: float
     vault_path: str
     notes: list[NotePreview]
+
+
+# ── Chunking preview models ───────────────────────────────────────────────────
+
+
+class ChunkPreview(BaseModel):
+    id: str
+    chunk_index: int
+    heading_path: list[str]
+    word_count: int
+    text_preview: str       # first 200 characters of the decorated text
+
+
+class NoteChunkPreview(BaseModel):
+    relative_path: str
+    title: str
+    tags: list[str]
+    content_hash: str
+    total_chunks: int
+    chunks: list[ChunkPreview]
+
+
+class ChunkingPreviewResponse(BaseModel):
+    vault_path: str
+    notes_found: int
+    total_chunks: int
+    chunk_size: int
+    chunk_overlap: int
+    notes: list[NoteChunkPreview]
