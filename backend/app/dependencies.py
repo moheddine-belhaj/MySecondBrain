@@ -5,14 +5,10 @@ This allows tests to swap any provider without touching endpoint code.
 
 Current providers
 -----------------
-get_settings         → Settings singleton
-get_llm_provider     → LLMProvider (currently OllamaService, stored on app.state)
+get_settings           → Settings singleton
+get_llm_provider       → LLMProvider (currently OllamaService, stored on app.state)
 get_embedding_provider → EmbeddingProvider (same OllamaService instance)
-
-Planned providers (wired in later tasks)
------------------------------------------
-get_qdrant      → AsyncQdrantClient (Task 5)
-get_rag_service → QueryService that combines LLM + Qdrant (Task 5)
+get_qdrant_service     → QdrantService (stored on app.state)
 """
 
 from functools import lru_cache
@@ -22,6 +18,7 @@ from fastapi import Depends, Request
 
 from app.config.settings import Settings, settings as _settings
 from app.services.llm.base import EmbeddingProvider, LLMProvider
+from app.services.vector.client import QdrantService
 
 
 @lru_cache(maxsize=1)
@@ -43,8 +40,13 @@ async def get_embedding_provider(request: Request) -> EmbeddingProvider:
     return request.app.state.embedding_provider
 
 
+async def get_qdrant_service(request: Request) -> QdrantService:
+    return request.app.state.qdrant_service
+
+
 # ── Type aliases ──────────────────────────────────────────────────────────────
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 LLMDep = Annotated[LLMProvider, Depends(get_llm_provider)]
 EmbedDep = Annotated[EmbeddingProvider, Depends(get_embedding_provider)]
+QdrantDep = Annotated[QdrantService, Depends(get_qdrant_service)]

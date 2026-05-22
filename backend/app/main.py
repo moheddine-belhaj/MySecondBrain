@@ -5,6 +5,7 @@ from typing import AsyncGenerator
 import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from qdrant_client import AsyncQdrantClient
 
 from app.api.system import router as system_router
 from app.api.v1 import router as api_v1_router
@@ -13,6 +14,7 @@ from app.exceptions import register_exception_handlers
 from app.logging_config import setup_logging
 from app.middleware import LoggingMiddleware, RequestIDMiddleware
 from app.services.llm.ollama import OllamaService
+from app.services.vector.client import QdrantService
 
 logger = logging.getLogger("app.main")
 
@@ -81,7 +83,31 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 "base_url": settings.ollama_base_url,
             },
         )
+
+        # ── Qdrant client ──────────────────────────────────────────────────────
+        # AsyncQdrantClient manages its own HTTP session internally.
+        # We wrap it in QdrantService (our abstraction) and store it on app.state.
+        qdrant_client = AsyncQdrantClient(
+            host=settings.qdrant_host,
+            port=settings.qdrant_port,
+        )
+        app.state.qdrant_service = QdrantService(
+            client=qdrant_client,
+            collection_name=settings.qdrant_collection,
+            vector_size=settings.qdrant_vector_size,
+        )
+        logger.info(
+            "Qdrant service ready",
+            extra={
+                "host": settings.qdrant_host,
+                "port": settings.qdrant_port,
+                "collection": settings.qdrant_collection,
+            },
+        )
+
         yield
+
+        await qdrant_client.close()
 
     logger.info("Shutdown complete")
 

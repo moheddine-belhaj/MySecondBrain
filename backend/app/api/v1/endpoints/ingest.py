@@ -1,9 +1,10 @@
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.config.settings import settings
+from app.dependencies import EmbedDep, QdrantDep
 from app.models.ingest import (
     ChunkPreview,
     ChunkingPreviewResponse,
@@ -12,7 +13,7 @@ from app.models.ingest import (
     NotePreview,
     ScanResponse,
 )
-from app.services.ingestion import MarkdownChunker
+from app.services.ingestion import EmbeddingPipeline, MarkdownChunker
 from app.services.vault import VaultScanner
 
 router = APIRouter()
@@ -135,15 +136,56 @@ async def preview_chunks() -> ChunkingPreviewResponse:
 
 
 @router.post("", response_model=IngestStatus, summary="Trigger vault ingestion")
-async def trigger_ingest() -> IngestStatus:
-    """Trigger full ingestion pipeline (scan → chunk → embed → index).
+async def trigger_ingest(
+    embedding_provider: EmbedDep,
+    qdrant_service: QdrantDep,
+) -> IngestStatus:
+    """Trigger the full ingestion pipeline: scan → chunk → embed → index.
 
-    Embedding and Qdrant indexing will be wired in Task 7.
+    Embeddings are generated via Ollama (nomic-embed-text by default).
+    Vectors and metadata are stored in Qdrant. Stale chunks from deleted or
+    re-chunked notes are automatically removed.
+
     Run POST /ingest/scan to preview notes, or POST /ingest/preview to see chunks.
     """
+    vault_path = _resolve_vault()
+    logger.info("Starting ingest pipeline", extra={"vault": str(vault_path)})
+
+    pipeline = EmbeddingPipeline(
+        scanner=VaultScanner(vault_path),
+        chunker=MarkdownChunker(
+            chunk_size=settings.chunk_size,
+            chunk_overlap=settings.chunk_overlap,
+        ),
+        embedding_provider=embedding_provider,
+        qdrant=qdrant_service,
+        batch_size=settings.embed_batch_size,
+    )
+
+    stats = await pipeline.run()
+
+    final_status = "completed" if not stats.errors else "failed"
+    message = (
+        f"{len(stats.errors)} batch(es) failed — partial index written."
+        if stats.errors
+        else None
+    )
+
+    logger.info(
+        "Ingest pipeline finished",
+        extra={"status": final_status, "indexed": stats.indexed_chunks},
+    )
+
     return IngestStatus(
-        status="pending",
-        message="Embedding pipeline not yet implemented. Use POST /ingest/preview to preview chunks.",
+        status=final_status,
+        total_notes=stats.total_notes,
+        processed_notes=stats.processed_notes,
+        total_chunks=stats.total_chunks,
+        embedded_chunks=stats.embedded_chunks,
+        indexed_chunks=stats.indexed_chunks,
+        deleted_stale_chunks=stats.deleted_stale_chunks,
+        duration_ms=stats.duration_ms,
+        message=message,
     )
 
 

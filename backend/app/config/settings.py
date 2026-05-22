@@ -53,6 +53,12 @@ class Settings(BaseSettings):
     # ── Ingestion ─────────────────────────────────────────────────────────────
     chunk_size: int = 512
     chunk_overlap: int = 64
+    # Number of chunks per Ollama /api/embed call. Larger = fewer round-trips;
+    # smaller = less data lost on a single batch failure.
+    embed_batch_size: int = 32
+    # Must match the embedding model's output dimension.
+    # nomic-embed-text → 768, mxbai-embed-large → 1024
+    qdrant_vector_size: int = 768
 
     @property
     def qdrant_url(self) -> str:

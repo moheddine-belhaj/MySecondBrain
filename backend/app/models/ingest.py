@@ -7,6 +7,11 @@ class IngestStatus(BaseModel):
     status: Literal["pending", "running", "completed", "failed"]
     total_notes: int = 0
     processed_notes: int = 0
+    total_chunks: int = 0
+    embedded_chunks: int = 0
+    indexed_chunks: int = 0
+    deleted_stale_chunks: int = 0
+    duration_ms: float | None = None
     message: str | None = None
 
 
