@@ -47,8 +47,8 @@ from app.services.ingestion.models import TextChunk
 from app.services.llm.base import EmbeddingProvider
 from app.services.vault.models import ScanResult, VaultNote
 from app.services.vault.scanner import VaultScanner
-from app.services.vector.client import QdrantService
 from app.services.vector.models import VectorPayload
+from app.services.vector.repository import VectorRepository
 
 logger = logging.getLogger("app.services.ingestion.embedder")
 
@@ -79,7 +79,7 @@ class EmbeddingPipeline:
         scanner: VaultScanner,
         chunker: MarkdownChunker,
         embedding_provider: EmbeddingProvider,
-        qdrant: QdrantService,
+        qdrant: VectorRepository,
         batch_size: int = 32,
     ) -> None:
         self._scanner = scanner
@@ -212,6 +212,7 @@ def _build_payload(
         chunk_index=chunk.metadata.chunk_index,
         total_chunks=chunk.metadata.total_chunks,
         word_count=chunk.word_count,
+        chunk_text=chunk.text,
         indexed_at=indexed_at,
         note_modified_at=note_modified_at,
     )

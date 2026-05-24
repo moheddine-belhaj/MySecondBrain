@@ -16,6 +16,7 @@ def _payload(**overrides) -> VectorPayload:
         chunk_index=0,
         total_chunks=3,
         word_count=120,
+        chunk_text="[Note: My Note | Section: Section One]\n\nSome content here.",
         indexed_at="2024-01-01T00:00:00+00:00",
         note_modified_at="2023-12-01T10:00:00+00:00",
     )
@@ -37,6 +38,7 @@ class TestVectorPayload:
             "chunk_index",
             "total_chunks",
             "word_count",
+            "chunk_text",
             "indexed_at",
             "note_modified_at",
         }
@@ -53,6 +55,7 @@ class TestVectorPayload:
         assert d["chunk_index"] == 0
         assert d["total_chunks"] == 3
         assert d["word_count"] == 120
+        assert d["chunk_text"] == "[Note: My Note | Section: Section One]\n\nSome content here."
         assert d["indexed_at"] == "2024-01-01T00:00:00+00:00"
         assert d["note_modified_at"] == "2023-12-01T10:00:00+00:00"
 
@@ -81,3 +84,8 @@ class TestVectorPayload:
         path = ["Root", "Chapter 1", "Section 1.1", "Sub-section"]
         p = _payload(heading_path=path)
         assert p.to_dict()["heading_path"] == path
+
+    def test_chunk_text_stored_verbatim(self):
+        text = "[Note: My Note]\n\nThis is the chunk content with special chars: & < >"
+        p = _payload(chunk_text=text)
+        assert p.to_dict()["chunk_text"] == text
