@@ -65,6 +65,7 @@ uvicorn app.main:app --reload
 cd frontend && npm install && npm run dev
 ```
 
+
 ## Stack
 
 | Layer | Technology |
@@ -74,3 +75,10 @@ cd frontend && npm install && npm run dev
 | AI | LlamaIndex · Ollama (llama3.2 + nomic-embed-text) |
 | Vector DB | Qdrant |
 | Infrastructure | Docker Compose |
+
+
+# Questions: ?
+
+- Run the model in the VPS
+- Use open sources API
+- k8s cours
