@@ -47,6 +47,14 @@ class Settings(BaseSettings):
     ollama_max_retries: int = 3
     ollama_retry_delay: float = 0.5
 
+    # ── Retrieval ─────────────────────────────────────────────────────────────
+    retrieval_top_k: int = 10
+    retrieval_score_threshold: float = 0.0
+    # Max chunks from a single note_id in one result set (diversity control).
+    retrieval_max_chunks_per_note: int = 2
+    # Qdrant fetch limit = top_k × this factor (headroom for dedup losses).
+    retrieval_over_fetch_factor: int = 3
+
     # ── Vault ─────────────────────────────────────────────────────────────────
     vault_path: str = "./vault"
 
