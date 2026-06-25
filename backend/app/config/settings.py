@@ -47,6 +47,14 @@ class Settings(BaseSettings):
     ollama_max_retries: int = 3
     ollama_retry_delay: float = 0.5
 
+    # ── Synthesis (LlamaIndex) ────────────────────────────────────────────────
+    # Response mode passed to LlamaIndex get_response_synthesizer().
+    # compact       — pack all chunks into one prompt; fast, works for most queries.
+    # refine        — iterates chunk-by-chunk, refining the answer; slower but
+    #                 better when chunks are long or context window is small.
+    # tree_summarize — builds a tree of summaries; best for very long contexts.
+    synthesis_mode: Literal["compact", "refine", "tree_summarize"] = "compact"
+
     # ── Retrieval ─────────────────────────────────────────────────────────────
     retrieval_top_k: int = 10
     retrieval_score_threshold: float = 0.0

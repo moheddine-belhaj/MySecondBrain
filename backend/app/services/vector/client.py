@@ -25,6 +25,7 @@ Payload indexes created
 """
 
 import logging
+import uuid as _uuid
 
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http import models as qmodels
@@ -43,6 +44,16 @@ logger = logging.getLogger("app.services.vector")
 # Fields that get a Qdrant payload index for fast filtering.
 _KEYWORD_INDEXES = ("tags", "note_id", "note_path", "note_title")
 _INTEGER_INDEXES = ("chunk_index",)
+
+
+def _to_point_id(chunk_id: str) -> str:
+    """Convert a 64-char SHA-256 hex digest to a UUID string.
+
+    Qdrant only accepts unsigned integers or UUID-formatted strings as point IDs.
+    We take the first 128 bits (32 hex chars) of the SHA-256 and format them as
+    a UUID. The full SHA-256 is preserved in the payload under 'chunk_id'.
+    """
+    return str(_uuid.UUID(hex=chunk_id[:32]))
 
 
 class QdrantService(VectorRepository):
@@ -128,7 +139,7 @@ class QdrantService(VectorRepository):
 
         points = [
             qmodels.PointStruct(
-                id=p.chunk_id,
+                id=_to_point_id(p.chunk_id),
                 vector=v,
                 payload=p.to_dict(),
             )
@@ -177,9 +188,9 @@ class QdrantService(VectorRepository):
         qdrant_filter = FilterBuilder.build(filters)
         threshold = score_threshold if score_threshold > 0.0 else None
 
-        scored_points = await self._client.search(
+        response = await self._client.query_points(
             collection_name=self._collection,
-            query_vector=query_vector,
+            query=query_vector,
             query_filter=qdrant_filter,
             limit=limit,
             score_threshold=threshold,
@@ -189,12 +200,12 @@ class QdrantService(VectorRepository):
 
         results = [
             SearchResult(
-                chunk_id=str(p.id),
+                chunk_id=(p.payload or {}).get("chunk_id", str(p.id)),
                 score=p.score,
                 chunk_text=(p.payload or {}).get("chunk_text", ""),
                 payload=p.payload or {},
             )
-            for p in scored_points
+            for p in response.points
         ]
 
         logger.debug(
@@ -218,11 +229,13 @@ class QdrantService(VectorRepository):
                 collection_name=self._collection,
                 limit=1000,
                 offset=offset,
-                with_payload=False,
+                with_payload=True,
                 with_vectors=False,
             )
             for point in results:
-                ids.add(str(point.id))
+                chunk_id = (point.payload or {}).get("chunk_id")
+                if chunk_id:
+                    ids.add(chunk_id)
             if next_offset is None:
                 break
             offset = next_offset
@@ -267,7 +280,7 @@ class QdrantService(VectorRepository):
 
         await self._client.delete(
             collection_name=self._collection,
-            points_selector=qmodels.PointIdsList(points=ids),
+            points_selector=qmodels.PointIdsList(points=[_to_point_id(i) for i in ids]),
             wait=True,
         )
         logger.info("Deleted points by ID", extra={"count": len(ids)})

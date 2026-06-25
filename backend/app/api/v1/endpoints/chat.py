@@ -5,9 +5,11 @@ from typing import AsyncGenerator
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
-from app.dependencies import LLMDep
-from app.models.chat import ChatRequest, ChatResponse
+from app.dependencies import LLMDep, RetrievalDep, SynthesisDep
+from app.models.chat import ChatRequest, ChatResponse, NoteSource, RagChatRequest, RagChatResponse
 from app.services.llm.schemas import ChatCompletionRequest, LLMMessage, LLMOptions
+from app.services.retrieval.models import RetrievalQuery
+from app.services.vector.models import SearchFilter
 
 router = APIRouter()
 logger = logging.getLogger("app.api.chat")
@@ -99,4 +101,71 @@ async def chat_stream(request: ChatRequest, llm: LLMDep) -> StreamingResponse:
             "X-Accel-Buffering": "no",
             "Connection": "keep-alive",
         },
+    )
+
+
+@router.post("/rag", response_model=RagChatResponse, summary="RAG chat — answers grounded in vault notes")
+async def rag_chat(
+    request: RagChatRequest,
+    retrieval: RetrievalDep,
+    synthesizer: SynthesisDep,
+) -> RagChatResponse:
+    """Retrieval-augmented chat.
+
+    1. Embeds the last user message and retrieves the top-k matching chunks
+       from the Qdrant vault index.
+    2. Passes the retrieved chunks to LlamaIndex's response synthesizer, which
+       compacts context and generates an answer grounded in the note excerpts.
+    3. Returns the answer together with source attribution and observability
+       fields (latency, candidate count, dedup count).
+
+    Use this endpoint for question-answering over the knowledge base.
+    Use POST /chat for plain LLM chat with no retrieval.
+    """
+    question = request.messages[-1].content
+
+    filters: SearchFilter | None = None
+    if request.tags or request.note_path:
+        filters = SearchFilter(tags=request.tags or [], note_path=request.note_path)
+
+    retrieval_result = await retrieval.retrieve(
+        RetrievalQuery(
+            text=question,
+            top_k=request.top_k,
+            score_threshold=request.score_threshold,
+            filters=filters,
+            deduplicate=request.deduplicate,
+        )
+    )
+
+    synthesis_result = await synthesizer.synthesize(question, retrieval_result.chunks)
+
+    sources = [
+        NoteSource(
+            note_title=c.note_title,
+            note_path=c.note_path,
+            excerpt=c.chunk_text[:300],
+            score=c.score,
+        )
+        for c in synthesis_result.source_chunks
+    ]
+
+    logger.info(
+        "RAG chat complete",
+        extra={
+            "question": question[:120],
+            "sources": len(sources),
+            "retrieval_ms": retrieval_result.latency_ms,
+            "synthesis_ms": synthesis_result.latency_ms,
+        },
+    )
+
+    return RagChatResponse(
+        content=synthesis_result.answer,
+        sources=sources,
+        retrieval_latency_ms=retrieval_result.latency_ms,
+        synthesis_latency_ms=synthesis_result.latency_ms,
+        total_candidates=retrieval_result.total_candidates,
+        deduplicated_count=retrieval_result.deduplicated_count,
+        filters_applied=retrieval_result.filters_applied,
     )

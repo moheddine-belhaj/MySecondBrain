@@ -5,6 +5,7 @@ from typing import AsyncGenerator
 import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from llama_index.llms.ollama import Ollama as LlamaIndexOllama
 from qdrant_client import AsyncQdrantClient
 
 from app.api.system import router as system_router
@@ -81,6 +82,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 "chat_model": settings.ollama_chat_model,
                 "embed_model": settings.ollama_embed_model,
                 "base_url": settings.ollama_base_url,
+            },
+        )
+
+        # ── LlamaIndex LLM (synthesis only) ───────────────────────────────────
+        # LlamaIndex's Ollama adapter manages its own HTTP session internally.
+        # It is used exclusively by ResponseSynthesizer for context compaction
+        # and answer generation. All other Ollama calls go through OllamaService.
+        app.state.llamaindex_llm = LlamaIndexOllama(
+            model=settings.ollama_chat_model,
+            base_url=settings.ollama_base_url,
+            request_timeout=settings.ollama_chat_timeout,
+        )
+        logger.info(
+            "LlamaIndex Ollama LLM ready",
+            extra={
+                "model": settings.ollama_chat_model,
+                "synthesis_mode": settings.synthesis_mode,
             },
         )
 

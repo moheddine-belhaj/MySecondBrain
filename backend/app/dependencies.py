@@ -10,6 +10,7 @@ get_llm_provider       → LLMProvider (currently OllamaService, stored on app.s
 get_embedding_provider → EmbeddingProvider (same OllamaService instance)
 get_qdrant_service     → VectorRepository (QdrantService, stored on app.state)
 get_retrieval_engine   → RetrievalEngine (constructed per-request from app.state deps)
+get_synthesizer        → ResponseSynthesizer (constructed per-request from app.state LLM)
 """
 
 from functools import lru_cache
@@ -20,6 +21,7 @@ from fastapi import Depends, Request
 from app.config.settings import Settings, settings as _settings
 from app.services.llm.base import EmbeddingProvider, LLMProvider
 from app.services.retrieval.engine import RetrievalEngine
+from app.services.synthesis.synthesizer import ResponseSynthesizer
 from app.services.vector.repository import VectorRepository
 
 
@@ -63,6 +65,19 @@ async def get_retrieval_engine(request: Request) -> RetrievalEngine:
     )
 
 
+async def get_synthesizer(request: Request) -> ResponseSynthesizer:
+    """Construct a ResponseSynthesizer from the shared LlamaIndex LLM on app.state.
+
+    Stateless between calls — cheap to construct per-request. The LlamaIndex
+    Ollama LLM (`app.state.llamaindex_llm`) holds the actual HTTP client and
+    is created once in lifespan.
+    """
+    return ResponseSynthesizer(
+        llm=request.app.state.llamaindex_llm,
+        mode=_settings.synthesis_mode,
+    )
+
+
 # ── Type aliases ──────────────────────────────────────────────────────────────
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
@@ -70,3 +85,4 @@ LLMDep = Annotated[LLMProvider, Depends(get_llm_provider)]
 EmbedDep = Annotated[EmbeddingProvider, Depends(get_embedding_provider)]
 QdrantDep = Annotated[VectorRepository, Depends(get_qdrant_service)]
 RetrievalDep = Annotated[RetrievalEngine, Depends(get_retrieval_engine)]
+SynthesisDep = Annotated[ResponseSynthesizer, Depends(get_synthesizer)]
