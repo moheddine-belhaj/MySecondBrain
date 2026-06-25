@@ -1,11 +1,11 @@
-"""Unit tests for ResponseSynthesizer and _chunk_to_node."""
+"""Unit tests for ResponseSynthesizer."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.services.retrieval.models import RetrievedChunk
-from app.services.synthesis.synthesizer import ResponseSynthesizer, _chunk_to_node
+from app.services.synthesis.synthesizer import ResponseSynthesizer
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -55,50 +55,6 @@ def _make_synthesizer(response_text: str = "Test answer.") -> tuple[ResponseSynt
         return synthesizer, mock_synth
 
 
-# ── Tests: _chunk_to_node ─────────────────────────────────────────────────────
-
-class TestChunkToNode:
-    def test_node_text_is_chunk_text(self):
-        chunk = _make_chunk(chunk_text="RAG means retrieval-augmented generation.")
-        node_with_score = _chunk_to_node(chunk)
-        assert node_with_score.node.text == "RAG means retrieval-augmented generation."
-
-    def test_score_is_preserved(self):
-        chunk = _make_chunk(score=0.87)
-        node_with_score = _chunk_to_node(chunk)
-        assert node_with_score.score == 0.87
-
-    def test_node_id_is_chunk_id(self):
-        chunk = _make_chunk(chunk_id="abc-123")
-        node_with_score = _chunk_to_node(chunk)
-        assert node_with_score.node.id_ == "abc-123"
-
-    def test_metadata_contains_note_title(self):
-        chunk = _make_chunk(note_title="Deep Learning Notes")
-        node_with_score = _chunk_to_node(chunk)
-        assert node_with_score.node.metadata["note_title"] == "Deep Learning Notes"
-
-    def test_metadata_contains_note_path(self):
-        chunk = _make_chunk(note_path="ai/deep-learning.md")
-        node_with_score = _chunk_to_node(chunk)
-        assert node_with_score.node.metadata["note_path"] == "ai/deep-learning.md"
-
-    def test_metadata_contains_tags(self):
-        chunk = _make_chunk(tags=["ai", "ml"])
-        node_with_score = _chunk_to_node(chunk)
-        assert node_with_score.node.metadata["tags"] == ["ai", "ml"]
-
-    def test_metadata_contains_heading_path(self):
-        chunk = _make_chunk(heading_path=["Introduction", "Background"])
-        node_with_score = _chunk_to_node(chunk)
-        assert node_with_score.node.metadata["heading_path"] == ["Introduction", "Background"]
-
-    def test_metadata_contains_chunk_id(self):
-        chunk = _make_chunk(chunk_id="xyz")
-        node_with_score = _chunk_to_node(chunk)
-        assert node_with_score.node.metadata["chunk_id"] == "xyz"
-
-
 # ── Tests: ResponseSynthesizer ────────────────────────────────────────────────
 
 class TestResponseSynthesizer:
@@ -121,7 +77,8 @@ class TestResponseSynthesizer:
         chunks = [_make_chunk("c1"), _make_chunk("c2")]
         await synthesizer.synthesize("query", chunks=chunks)
         call_kwargs = mock_synth.asynthesize.call_args.kwargs
-        assert len(call_kwargs["nodes"]) == 2
+        # ContextBuilder pre-formats all chunks into a single context node
+        assert len(call_kwargs["nodes"]) == 1
 
     async def test_answer_from_response(self):
         synthesizer, _ = _make_synthesizer("This is the synthesized answer.")

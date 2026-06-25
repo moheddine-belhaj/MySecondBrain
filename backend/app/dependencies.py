@@ -10,7 +10,8 @@ get_llm_provider       → LLMProvider (currently OllamaService, stored on app.s
 get_embedding_provider → EmbeddingProvider (same OllamaService instance)
 get_qdrant_service     → VectorRepository (QdrantService, stored on app.state)
 get_retrieval_engine   → RetrievalEngine (constructed per-request from app.state deps)
-get_synthesizer        → ResponseSynthesizer (constructed per-request from app.state LLM)
+get_synthesizer        → ResponseSynthesizer (constructed per-request; wires
+                          ContextBuilder with the model-specific token budget)
 """
 
 from functools import lru_cache
@@ -21,6 +22,8 @@ from fastapi import Depends, Request
 from app.config.settings import Settings, settings as _settings
 from app.services.llm.base import EmbeddingProvider, LLMProvider
 from app.services.retrieval.engine import RetrievalEngine
+from app.services.synthesis.context_builder import ContextBuilder
+from app.services.synthesis.prompt_config import get_prompt_config
 from app.services.synthesis.synthesizer import ResponseSynthesizer
 from app.services.vector.repository import VectorRepository
 
@@ -66,15 +69,18 @@ async def get_retrieval_engine(request: Request) -> RetrievalEngine:
 
 
 async def get_synthesizer(request: Request) -> ResponseSynthesizer:
-    """Construct a ResponseSynthesizer from the shared LlamaIndex LLM on app.state.
+    """Construct a ResponseSynthesizer with a model-aware ContextBuilder.
 
-    Stateless between calls — cheap to construct per-request. The LlamaIndex
-    Ollama LLM (`app.state.llamaindex_llm`) holds the actual HTTP client and
-    is created once in lifespan.
+    PromptConfig is looked up by model name, giving each model its correct
+    context budget.  ContextBuilder enforces that budget before any content
+    reaches LlamaIndex, preventing context overflow at the source.
     """
+    config = get_prompt_config(_settings.ollama_chat_model)
+    context_builder = ContextBuilder(max_context_tokens=config.context_budget)
     return ResponseSynthesizer(
         llm=request.app.state.llamaindex_llm,
         mode=_settings.synthesis_mode,
+        context_builder=context_builder,
     )
 
 
