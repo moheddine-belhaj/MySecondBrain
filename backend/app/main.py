@@ -15,6 +15,7 @@ from app.exceptions import register_exception_handlers
 from app.logging_config import setup_logging
 from app.middleware import LoggingMiddleware, RequestIDMiddleware
 from app.services.llm.ollama import OllamaService
+from app.services.session.store import SessionStore
 from app.services.vector.client import QdrantService
 
 logger = logging.getLogger("app.main")
@@ -75,6 +76,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # not on OllamaService. Swap to a different backend by changing only this block.
         app.state.llm_provider = ollama
         app.state.embedding_provider = ollama
+
+        # ── Session store ──────────────────────────────────────────────────────
+        # Single in-memory store shared across all requests.
+        # Max 100 sessions, 20 messages/session, 1-hour TTL.
+        app.state.session_store = SessionStore(
+            max_sessions=100,
+            max_history=20,
+            ttl_seconds=3600.0,
+        )
+        logger.info("Session store ready", extra={"max_sessions": 100, "ttl_s": 3600})
 
         logger.info(
             "Ollama service ready",

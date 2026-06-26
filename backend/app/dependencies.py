@@ -12,6 +12,7 @@ get_qdrant_service     → VectorRepository (QdrantService, stored on app.state)
 get_retrieval_engine   → RetrievalEngine (constructed per-request from app.state deps)
 get_synthesizer        → ResponseSynthesizer (constructed per-request; wires
                           ContextBuilder with the model-specific token budget)
+get_session_store      → SessionStore (singleton on app.state, shared across requests)
 """
 
 from functools import lru_cache
@@ -22,6 +23,7 @@ from fastapi import Depends, Request
 from app.config.settings import Settings, settings as _settings
 from app.services.llm.base import EmbeddingProvider, LLMProvider
 from app.services.retrieval.engine import RetrievalEngine
+from app.services.session.store import SessionStore
 from app.services.synthesis.context_builder import ContextBuilder
 from app.services.synthesis.prompt_config import get_prompt_config
 from app.services.synthesis.synthesizer import ResponseSynthesizer
@@ -84,6 +86,15 @@ async def get_synthesizer(request: Request) -> ResponseSynthesizer:
     )
 
 
+async def get_session_store(request: Request) -> SessionStore:
+    """Return the singleton SessionStore from app.state.
+
+    The store is created once in main.py lifespan and lives for the process
+    lifetime.  It holds all active conversation sessions in memory.
+    """
+    return request.app.state.session_store
+
+
 # ── Type aliases ──────────────────────────────────────────────────────────────
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
@@ -92,3 +103,4 @@ EmbedDep = Annotated[EmbeddingProvider, Depends(get_embedding_provider)]
 QdrantDep = Annotated[VectorRepository, Depends(get_qdrant_service)]
 RetrievalDep = Annotated[RetrievalEngine, Depends(get_retrieval_engine)]
 SynthesisDep = Annotated[ResponseSynthesizer, Depends(get_synthesizer)]
+SessionDep = Annotated[SessionStore, Depends(get_session_store)]
