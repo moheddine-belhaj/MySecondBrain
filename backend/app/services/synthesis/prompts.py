@@ -101,3 +101,22 @@ REFINE_PROMPT = PromptTemplate(
     "Keep citations as [N].\n\n"
     "Refined answer:"
 )
+
+
+def build_rag_user_message(context_str: str, question: str) -> str:
+    """Build the context-injected user message for the streaming RAG path.
+
+    The streaming RAG endpoint bypasses LlamaIndex and calls the LLM directly,
+    so it needs to assemble the prompt manually.  This function owns that
+    assembly using the same layer constants as QA_PROMPT, guaranteeing that
+    the blocking and streaming paths produce identical prompt structure.
+    """
+    return (
+        f"{_CONTEXT_HEADER}\n"
+        f"{_CONTEXT_FENCE}\n"
+        f"{context_str}\n"
+        f"{_CONTEXT_FENCE}\n"
+        f"{_CONTEXT_FOOTER}\n\n"
+        f"Question: {question}\n\n"
+        f"{_ANSWER_INSTRUCTION}"
+    )
