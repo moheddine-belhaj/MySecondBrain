@@ -13,9 +13,16 @@ from unittest.mock import AsyncMock, MagicMock, call
 import pytest
 from qdrant_client.http import models as qmodels
 
-from app.services.vector.client import QdrantService, _INTEGER_INDEXES, _KEYWORD_INDEXES
+from app.services.vector.client import QdrantService, _INTEGER_INDEXES, _KEYWORD_INDEXES, _to_point_id
 from app.services.vector.filters import FilterBuilder
 from app.services.vector.models import CollectionInfo, SearchFilter, SearchResult, VectorPayload
+
+
+# ── Test chunk IDs (must be ≥32 hex chars so _to_point_id can form a UUID) ────
+
+_CHUNK_ID_1 = "a" * 32
+_CHUNK_ID_2 = "b" * 32
+_CHUNK_ID_3 = "c" * 32
 
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
@@ -27,7 +34,7 @@ def _make_client() -> MagicMock:
     client.create_collection = AsyncMock()
     client.create_payload_index = AsyncMock()
     client.upsert = AsyncMock()
-    client.search = AsyncMock(return_value=[])
+    client.query_points = AsyncMock(return_value=MagicMock(points=[]))
     client.delete = AsyncMock()
     client.set_payload = AsyncMock()
     client.count = AsyncMock(return_value=MagicMock(count=0))
@@ -46,7 +53,7 @@ def _make_service(client=None) -> tuple[QdrantService, MagicMock]:
 
 def _payload(**overrides) -> VectorPayload:
     defaults = dict(
-        chunk_id="cid1",
+        chunk_id=_CHUNK_ID_1,
         note_id="nid1",
         note_title="Note",
         note_path="note.md",
@@ -203,12 +210,12 @@ class TestUpsert:
 
     async def test_single_payload_creates_correct_point(self):
         svc, client = _make_service()
-        p = _payload(chunk_id="cid", chunk_text="hello")
+        p = _payload(chunk_id=_CHUNK_ID_1, chunk_text="hello")
         await svc.upsert([p], [[0.1, 0.2, 0.3, 0.4]])
         client.upsert.assert_awaited_once()
         points = client.upsert.call_args.kwargs["points"]
         assert len(points) == 1
-        assert points[0].id == "cid"
+        assert points[0].id == _to_point_id(_CHUNK_ID_1)
         assert points[0].vector == [0.1, 0.2, 0.3, 0.4]
         assert points[0].payload["chunk_text"] == "hello"
 
@@ -226,12 +233,13 @@ class TestUpsert:
 
     async def test_multiple_payloads(self):
         svc, client = _make_service()
-        payloads = [_payload(chunk_id=f"c{i}") for i in range(3)]
+        chunk_ids = [_CHUNK_ID_1, _CHUNK_ID_2, _CHUNK_ID_3]
+        payloads = [_payload(chunk_id=cid) for cid in chunk_ids]
         vectors = [[float(i)] * 4 for i in range(3)]
         await svc.upsert(payloads, vectors)
         points = client.upsert.call_args.kwargs["points"]
         assert len(points) == 3
-        assert [p.id for p in points] == ["c0", "c1", "c2"]
+        assert [p.id for p in points] == [_to_point_id(cid) for cid in chunk_ids]
 
 
 # ── QdrantService.search ──────────────────────────────────────────────────────
@@ -245,10 +253,10 @@ class TestSearch:
 
     async def test_scored_point_parsed_into_search_result(self):
         svc, client = _make_service()
-        client.search = AsyncMock(
-            return_value=[
+        client.query_points = AsyncMock(
+            return_value=MagicMock(points=[
                 _scored_point("cid1", 0.95, {"chunk_text": "hello", "note_title": "N"})
-            ]
+            ])
         )
         results = await svc.search(query_vector=[1.0, 0.0, 0.0, 0.0])
         assert len(results) == 1
@@ -262,50 +270,50 @@ class TestSearch:
     async def test_limit_passed_to_client(self):
         svc, client = _make_service()
         await svc.search(query_vector=[0.0, 0.0, 0.0, 0.0], limit=5)
-        assert client.search.call_args.kwargs["limit"] == 5
+        assert client.query_points.call_args.kwargs["limit"] == 5
 
     async def test_zero_score_threshold_passes_none(self):
         svc, client = _make_service()
         await svc.search(query_vector=[0.0] * 4, score_threshold=0.0)
-        assert client.search.call_args.kwargs["score_threshold"] is None
+        assert client.query_points.call_args.kwargs["score_threshold"] is None
 
     async def test_positive_threshold_passed_through(self):
         svc, client = _make_service()
         await svc.search(query_vector=[0.0] * 4, score_threshold=0.7)
-        assert client.search.call_args.kwargs["score_threshold"] == 0.7
+        assert client.query_points.call_args.kwargs["score_threshold"] == 0.7
 
     async def test_filter_translated_and_passed(self):
         svc, client = _make_service()
         sf = SearchFilter(note_id="hash123")
         await svc.search(query_vector=[0.0] * 4, filters=sf)
-        qdrant_filter = client.search.call_args.kwargs["query_filter"]
+        qdrant_filter = client.query_points.call_args.kwargs["query_filter"]
         assert qdrant_filter is not None
         assert qdrant_filter.must[0].key == "note_id"
 
     async def test_no_filter_passes_none(self):
         svc, client = _make_service()
         await svc.search(query_vector=[0.0] * 4, filters=None)
-        assert client.search.call_args.kwargs["query_filter"] is None
+        assert client.query_points.call_args.kwargs["query_filter"] is None
 
     async def test_with_payload_is_true(self):
         svc, client = _make_service()
         await svc.search(query_vector=[0.0] * 4)
-        assert client.search.call_args.kwargs["with_payload"] is True
+        assert client.query_points.call_args.kwargs["with_payload"] is True
 
     async def test_missing_chunk_text_in_payload_defaults_to_empty_string(self):
         svc, client = _make_service()
-        client.search = AsyncMock(return_value=[_scored_point("cid", 0.8, {"note_title": "N"})])
+        client.query_points = AsyncMock(return_value=MagicMock(points=[_scored_point("cid", 0.8, {"note_title": "N"})]))
         results = await svc.search(query_vector=[0.0] * 4)
         assert results[0].chunk_text == ""
 
     async def test_multiple_results_ordered_by_qdrant(self):
         svc, client = _make_service()
-        client.search = AsyncMock(
-            return_value=[
+        client.query_points = AsyncMock(
+            return_value=MagicMock(points=[
                 _scored_point("c1", 0.9, {"chunk_text": "high"}),
                 _scored_point("c2", 0.7, {"chunk_text": "mid"}),
                 _scored_point("c3", 0.5, {"chunk_text": "low"}),
-            ]
+            ])
         )
         results = await svc.search(query_vector=[0.0] * 4)
         assert [r.chunk_id for r in results] == ["c1", "c2", "c3"]
@@ -322,14 +330,14 @@ class TestDeletePoints:
 
     async def test_ids_passed_as_point_ids_list(self):
         svc, client = _make_service()
-        await svc.delete_points(["id1", "id2"])
+        await svc.delete_points([_CHUNK_ID_1, _CHUNK_ID_2])
         selector = client.delete.call_args.kwargs["points_selector"]
         assert isinstance(selector, qmodels.PointIdsList)
-        assert selector.points == ["id1", "id2"]
+        assert selector.points == [_to_point_id(_CHUNK_ID_1), _to_point_id(_CHUNK_ID_2)]
 
     async def test_wait_is_true(self):
         svc, client = _make_service()
-        await svc.delete_points(["id1"])
+        await svc.delete_points([_CHUNK_ID_1])
         assert client.delete.call_args.kwargs["wait"] is True
 
 

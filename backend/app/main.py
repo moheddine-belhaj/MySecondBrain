@@ -5,6 +5,7 @@ from typing import AsyncGenerator
 import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from llama_index.llms.ollama import Ollama as LlamaIndexOllama
 from qdrant_client import AsyncQdrantClient
 
 from app.api.system import router as system_router
@@ -14,6 +15,7 @@ from app.exceptions import register_exception_handlers
 from app.logging_config import setup_logging
 from app.middleware import LoggingMiddleware, RequestIDMiddleware
 from app.services.llm.ollama import OllamaService
+from app.services.session.store import SessionStore
 from app.services.vector.client import QdrantService
 
 logger = logging.getLogger("app.main")
@@ -75,12 +77,39 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         app.state.llm_provider = ollama
         app.state.embedding_provider = ollama
 
+        # ── Session store ──────────────────────────────────────────────────────
+        # Single in-memory store shared across all requests.
+        # Max 100 sessions, 20 messages/session, 1-hour TTL.
+        app.state.session_store = SessionStore(
+            max_sessions=100,
+            max_history=20,
+            ttl_seconds=3600.0,
+        )
+        logger.info("Session store ready", extra={"max_sessions": 100, "ttl_s": 3600})
+
         logger.info(
             "Ollama service ready",
             extra={
                 "chat_model": settings.ollama_chat_model,
                 "embed_model": settings.ollama_embed_model,
                 "base_url": settings.ollama_base_url,
+            },
+        )
+
+        # ── LlamaIndex LLM (synthesis only) ───────────────────────────────────
+        # LlamaIndex's Ollama adapter manages its own HTTP session internally.
+        # It is used exclusively by ResponseSynthesizer for context compaction
+        # and answer generation. All other Ollama calls go through OllamaService.
+        app.state.llamaindex_llm = LlamaIndexOllama(
+            model=settings.ollama_chat_model,
+            base_url=settings.ollama_base_url,
+            request_timeout=settings.ollama_chat_timeout,
+        )
+        logger.info(
+            "LlamaIndex Ollama LLM ready",
+            extra={
+                "model": settings.ollama_chat_model,
+                "synthesis_mode": settings.synthesis_mode,
             },
         )
 

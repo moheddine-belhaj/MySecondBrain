@@ -8,7 +8,11 @@ Current providers
 get_settings           → Settings singleton
 get_llm_provider       → LLMProvider (currently OllamaService, stored on app.state)
 get_embedding_provider → EmbeddingProvider (same OllamaService instance)
-get_qdrant_service     → QdrantService (stored on app.state)
+get_qdrant_service     → VectorRepository (QdrantService, stored on app.state)
+get_retrieval_engine   → RetrievalEngine (constructed per-request from app.state deps)
+get_synthesizer        → ResponseSynthesizer (constructed per-request; wires
+                          ContextBuilder with the model-specific token budget)
+get_session_store      → SessionStore (singleton on app.state, shared across requests)
 """
 
 from functools import lru_cache
@@ -18,7 +22,12 @@ from fastapi import Depends, Request
 
 from app.config.settings import Settings, settings as _settings
 from app.services.llm.base import EmbeddingProvider, LLMProvider
-from app.services.vector.client import QdrantService
+from app.services.retrieval.engine import RetrievalEngine
+from app.services.session.store import SessionStore
+from app.services.synthesis.context_builder import ContextBuilder
+from app.services.synthesis.prompt_config import get_prompt_config
+from app.services.synthesis.synthesizer import ResponseSynthesizer
+from app.services.vector.repository import VectorRepository
 
 
 @lru_cache(maxsize=1)
@@ -40,8 +49,50 @@ async def get_embedding_provider(request: Request) -> EmbeddingProvider:
     return request.app.state.embedding_provider
 
 
-async def get_qdrant_service(request: Request) -> QdrantService:
+async def get_qdrant_service(request: Request) -> VectorRepository:
     return request.app.state.qdrant_service
+
+
+async def get_retrieval_engine(request: Request) -> RetrievalEngine:
+    """Construct a RetrievalEngine from the shared app.state providers.
+
+    RetrievalEngine is stateless between calls, so constructing it per-request
+    is cheap. It holds references to the shared, connection-pooled providers
+    (embedding_provider and qdrant_service) — no new connections are opened.
+    """
+    return RetrievalEngine(
+        embedding_provider=request.app.state.embedding_provider,
+        qdrant=request.app.state.qdrant_service,
+        default_top_k=_settings.retrieval_top_k,
+        default_score_threshold=_settings.retrieval_score_threshold,
+        default_max_chunks_per_note=_settings.retrieval_max_chunks_per_note,
+        default_over_fetch_factor=_settings.retrieval_over_fetch_factor,
+    )
+
+
+async def get_synthesizer(request: Request) -> ResponseSynthesizer:
+    """Construct a ResponseSynthesizer with a model-aware ContextBuilder.
+
+    PromptConfig is looked up by model name, giving each model its correct
+    context budget.  ContextBuilder enforces that budget before any content
+    reaches LlamaIndex, preventing context overflow at the source.
+    """
+    config = get_prompt_config(_settings.ollama_chat_model)
+    context_builder = ContextBuilder(max_context_tokens=config.context_budget)
+    return ResponseSynthesizer(
+        llm=request.app.state.llamaindex_llm,
+        mode=_settings.synthesis_mode,
+        context_builder=context_builder,
+    )
+
+
+async def get_session_store(request: Request) -> SessionStore:
+    """Return the singleton SessionStore from app.state.
+
+    The store is created once in main.py lifespan and lives for the process
+    lifetime.  It holds all active conversation sessions in memory.
+    """
+    return request.app.state.session_store
 
 
 # ── Type aliases ──────────────────────────────────────────────────────────────
@@ -49,4 +100,7 @@ async def get_qdrant_service(request: Request) -> QdrantService:
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 LLMDep = Annotated[LLMProvider, Depends(get_llm_provider)]
 EmbedDep = Annotated[EmbeddingProvider, Depends(get_embedding_provider)]
-QdrantDep = Annotated[QdrantService, Depends(get_qdrant_service)]
+QdrantDep = Annotated[VectorRepository, Depends(get_qdrant_service)]
+RetrievalDep = Annotated[RetrievalEngine, Depends(get_retrieval_engine)]
+SynthesisDep = Annotated[ResponseSynthesizer, Depends(get_synthesizer)]
+SessionDep = Annotated[SessionStore, Depends(get_session_store)]
