@@ -42,6 +42,22 @@ class ValidationError(AppError):
         super().__init__(message)
 
 
+class RateLimitError(AppError):
+    status_code = 429
+
+    def __init__(self, endpoint: str = "") -> None:
+        detail = f" on {endpoint}" if endpoint else ""
+        super().__init__(f"Too many requests{detail}. Please slow down.")
+
+
+class PromptInjectionError(AppError):
+    status_code = 400
+
+    def __init__(self) -> None:
+        # Generic message — never reveal which pattern matched
+        super().__init__("Query contains disallowed content.")
+
+
 # ── Shared error response shape ───────────────────────────────────────────────
 
 def _error_response(

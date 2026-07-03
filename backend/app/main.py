@@ -15,6 +15,7 @@ from app.exceptions import register_exception_handlers
 from app.logging_config import setup_logging
 from app.middleware import LoggingMiddleware, RequestIDMiddleware
 from app.services.llm.ollama import OllamaService
+from app.services.security.rate_limiter import RateLimiter
 from app.services.session.store import SessionStore
 from app.services.vector.client import QdrantService
 
@@ -76,6 +77,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # not on OllamaService. Swap to a different backend by changing only this block.
         app.state.llm_provider = ollama
         app.state.embedding_provider = ollama
+
+        # ── Rate limiters ─────────────────────────────────────────────────────
+        # Chat: 30 req/min, burst 10 — prevents Ollama DoS while allowing UI bursts.
+        # Ingest: 5 req/min, burst 2 — embedding is expensive; rate-limit tightly.
+        app.state.chat_rate_limiter = RateLimiter(requests_per_minute=30, burst=10)
+        app.state.ingest_rate_limiter = RateLimiter(requests_per_minute=5, burst=2)
+        logger.info("Rate limiters ready", extra={"chat_rpm": 30, "ingest_rpm": 5})
 
         # ── Session store ──────────────────────────────────────────────────────
         # Single in-memory store shared across all requests.

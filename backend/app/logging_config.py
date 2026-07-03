@@ -74,6 +74,14 @@ def setup_logging(log_level: str = "INFO", log_format: str = "json") -> None:
     app_logger.addHandler(handler)
     app_logger.propagate = False
 
+    # Security audit logger — separate from "app.*" so events can be routed
+    # to a different sink (file, SIEM) without changing app log routing.
+    audit_logger = logging.getLogger("security.audit")
+    audit_logger.setLevel(logging.INFO)
+    audit_logger.handlers.clear()
+    audit_logger.addHandler(handler)
+    audit_logger.propagate = False
+
     # Reduce noise from third-party libraries in the root logger
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
