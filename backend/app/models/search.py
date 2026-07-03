@@ -2,7 +2,13 @@ from pydantic import BaseModel
 
 
 class RetrievedChunkResponse(BaseModel):
-    chunk_id: str
+    """Public search result — internal vector IDs (chunk_id, note_id) are excluded.
+
+    chunk_id is an internal SHA-256 hash used as the Qdrant point key.
+    Exposing it would leak the internal keying scheme and could be used
+    to correlate results across requests. Clients can uniquely identify a
+    chunk by (note_path, chunk_index) without needing the raw DB key.
+    """
     score: float
     rank: int
     chunk_text: str

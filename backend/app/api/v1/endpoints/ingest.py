@@ -4,7 +4,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.config.settings import settings
-from app.dependencies import EmbedDep, QdrantDep
+from app.dependencies import EmbedDep, IngestRateLimitDep, QdrantDep
 from app.models.ingest import (
     ChunkPreview,
     ChunkingPreviewResponse,
@@ -139,6 +139,7 @@ async def preview_chunks() -> ChunkingPreviewResponse:
 async def trigger_ingest(
     embedding_provider: EmbedDep,
     qdrant_service: QdrantDep,
+    _rl: IngestRateLimitDep,
 ) -> IngestStatus:
     """Trigger the full ingestion pipeline: scan → chunk → embed → index.
 
