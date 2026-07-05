@@ -1,18 +1,71 @@
-import type { ChatMessage, IngestStatus } from "~/types";
+import type {
+  ChatMessage,
+  ChatResponse,
+  ConversationHistory,
+  HealthResponse,
+  IngestStatus,
+  RagChatRequest,
+  ScanResponse,
+  SearchResponse,
+  SessionInfo,
+} from "~/types";
 
-// Thin wrapper around $fetch — real implementations come in later tasks.
-export const useApiService = () => {
+function useBase() {
   const config = useRuntimeConfig();
-  const base = config.public.apiBase;
+  return config.public.apiBase as string;
+}
 
-  const chat = (messages: Pick<ChatMessage, "role" | "content">[]) =>
-    $fetch<ChatMessage>(`${base}/chat`, { method: "POST", body: { messages } });
+// ── Chat ─────────────────────────────────────────────────────────────────────
 
-  const triggerIngest = () =>
-    $fetch<IngestStatus>(`${base}/ingest`, { method: "POST" });
+export const chatApi = {
+  sendMessage(messages: ChatMessage[], sessionId?: string) {
+    return $fetch<ChatResponse>(`${useBase()}/chat/rag`, {
+      method: "POST",
+      body: { messages, session_id: sessionId ?? null } satisfies RagChatRequest,
+    });
+  },
 
-  const getIngestStatus = () =>
-    $fetch<IngestStatus>(`${base}/ingest/status`);
+  streamUrl(base: string) {
+    return `${base}/chat/rag/stream`;
+  },
 
-  return { chat, triggerIngest, getIngestStatus };
+  getSession(sessionId: string) {
+    return $fetch<ConversationHistory>(`${useBase()}/chat/sessions/${sessionId}`);
+  },
+
+  deleteSession(sessionId: string) {
+    return $fetch<SessionInfo>(`${useBase()}/chat/sessions/${sessionId}`, {
+      method: "DELETE",
+    });
+  },
+};
+
+// ── Search ────────────────────────────────────────────────────────────────────
+
+export const searchApi = {
+  search(q: string, topK = 5) {
+    return $fetch<SearchResponse>(`${useBase()}/search`, {
+      query: { q, top_k: topK },
+    });
+  },
+};
+
+// ── Ingest ────────────────────────────────────────────────────────────────────
+
+export const ingestApi = {
+  triggerIngest() {
+    return $fetch<IngestStatus>(`${useBase()}/ingest`, { method: "POST" });
+  },
+
+  scan() {
+    return $fetch<ScanResponse>(`${useBase()}/ingest/scan`, { method: "POST" });
+  },
+};
+
+// ── Health ────────────────────────────────────────────────────────────────────
+
+export const healthApi = {
+  check() {
+    return $fetch<HealthResponse>(`${useBase()}/health`);
+  },
 };
