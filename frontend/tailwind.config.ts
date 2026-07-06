@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import typography from "@tailwindcss/typography";
 
 export default {
   darkMode: "class",
@@ -29,7 +30,29 @@ export default {
         sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
         mono: ["JetBrains Mono", "ui-monospace", "monospace"],
       },
+      typography: {
+        DEFAULT: {
+          css: {
+            maxWidth: "none",
+            color: "inherit",
+            a: { color: "#0284c7", textDecoration: "none", "&:hover": { textDecoration: "underline" } },
+            "h1,h2,h3,h4": { color: "inherit", fontWeight: "600" },
+            code: { color: "#0ea5e9", background: "none", fontWeight: "400" },
+            "pre code": { color: "inherit" },
+            "code::before": { content: '""' },
+            "code::after": { content: '""' },
+          },
+        },
+        invert: {
+          css: {
+            color: "inherit",
+            a: { color: "#38bdf8" },
+            "h1,h2,h3,h4": { color: "inherit" },
+            code: { color: "#38bdf8" },
+          },
+        },
+      },
     },
   },
-  plugins: [],
+  plugins: [typography],
 } satisfies Config;
