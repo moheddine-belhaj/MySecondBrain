@@ -7,26 +7,28 @@ definePageMeta({ layout: "default" });
 
 const config = useRuntimeConfig();
 const chat = useChatStore();
-const { messages, isLoading, error, sessionId } = storeToRefs(chat);
-const { start: startStream, isStreaming } = useStream();
+const { messages, sessionId } = storeToRefs(chat);
+const { start: startStream, stop: stopStream, isStreaming } = useStream();
 
-const input = ref("");
-const inputEl = ref<HTMLTextAreaElement | null>(null);
+const streamError = ref<string | null>(null);
+const isBusy = computed(() => isStreaming.value);
 
-async function send() {
-  const text = input.value.trim();
-  if (!text || isLoading.value || isStreaming.value) return;
-  input.value = "";
+async function handleSend(text: string) {
+  if (isBusy.value) return;
+  streamError.value = null;
 
   chat.addUserMessage(text);
   const placeholder = chat.addAssistantPlaceholder();
 
+  // Build history excluding the streaming placeholder
+  const history = messages.value
+    .filter((m) => !m.isStreaming)
+    .map(({ role, content }) => ({ role, content }));
+
   await startStream({
     url: `${config.public.apiBase}/chat/rag/stream`,
     body: {
-      messages: messages.value
-        .filter((m) => m.id !== placeholder.id && !m.isStreaming)
-        .map(({ role, content }) => ({ role, content })),
+      messages: history,
       session_id: sessionId.value ?? null,
     },
     onEvent(event) {
@@ -37,125 +39,92 @@ async function send() {
         chat.finaliseAssistant(placeholder.id, event.sources, event.session_id);
       }
       if (event.type === "error") {
-        chat.finaliseAssistant(placeholder.id, [], null);
+        const msg = event.error || "The assistant encountered an error.";
+        chat.setError(placeholder.id, msg);
+        streamError.value = msg;
       }
+    },
+    onError(err) {
+      const msg = err.includes("400")
+        ? "Request rejected — your message may contain disallowed content."
+        : err.includes("429")
+          ? "Too many requests — please wait a moment."
+          : `Connection error: ${err}`;
+      chat.setError(placeholder.id, msg);
+      streamError.value = msg;
     },
   });
 }
 
-function onKeydown(e: KeyboardEvent) {
-  if (e.key === "Enter" && !e.shiftKey) {
-    e.preventDefault();
-    send();
-  }
+function handleClear() {
+  stopStream();
+  chat.clearSession();
+  streamError.value = null;
 }
-
-const messagesEl = ref<HTMLElement | null>(null);
-watch(messages, async () => {
-  await nextTick();
-  if (messagesEl.value) {
-    messagesEl.value.scrollTop = messagesEl.value.scrollHeight;
-  }
-}, { deep: true });
 </script>
 
 <template>
   <div class="flex flex-col h-full">
+    <!-- Messages area -->
+    <ChatMessages :messages="messages" />
 
-    <!-- Message list -->
-    <div ref="messagesEl" class="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-      <!-- Empty state -->
-      <div v-if="!messages.length" class="flex flex-col items-center justify-center h-full gap-4 text-center">
-        <span class="text-4xl">🧠</span>
-        <p class="text-gray-500 dark:text-gray-400 text-sm max-w-xs">
-          Ask anything about your Obsidian vault. The AI will search your notes and answer from them.
-        </p>
-      </div>
-
-      <!-- Messages -->
+    <!-- Inline stream error banner (fades out after user sends next message) -->
+    <Transition name="slide-up">
       <div
-        v-for="msg in messages"
-        :key="msg.id"
-        :class="[
-          'flex gap-3 max-w-3xl',
-          msg.role === 'user' ? 'ml-auto flex-row-reverse' : '',
-        ]"
+        v-if="streamError"
+        class="px-4 py-2 bg-red-50 dark:bg-red-950/40 border-t border-red-200 dark:border-red-800"
       >
-        <!-- Avatar -->
-        <div
-          :class="[
-            'w-7 h-7 rounded-full flex items-center justify-center text-xs shrink-0 mt-0.5',
-            msg.role === 'user'
-              ? 'bg-brand-600 text-white'
-              : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300',
-          ]"
-        >
-          {{ msg.role === 'user' ? 'U' : '🧠' }}
-        </div>
-
-        <!-- Bubble -->
-        <div
-          :class="[
-            'px-4 py-3 rounded-2xl text-sm leading-relaxed max-w-[75%]',
-            msg.role === 'user'
-              ? 'bg-brand-600 text-white rounded-tr-sm'
-              : 'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-800 dark:text-gray-200 rounded-tl-sm',
-          ]"
-        >
-          <span v-if="msg.isStreaming && !msg.content" class="inline-flex gap-1">
-            <span class="w-1.5 h-1.5 rounded-full bg-current animate-bounce [animation-delay:0ms]" />
-            <span class="w-1.5 h-1.5 rounded-full bg-current animate-bounce [animation-delay:150ms]" />
-            <span class="w-1.5 h-1.5 rounded-full bg-current animate-bounce [animation-delay:300ms]" />
-          </span>
-          <span v-else class="whitespace-pre-wrap">{{ msg.content }}</span>
-
-          <!-- Sources -->
-          <div v-if="msg.sources?.length" class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 space-y-1">
-            <p class="text-xs text-gray-400 dark:text-gray-500 font-medium">Sources</p>
-            <div
-              v-for="src in msg.sources"
-              :key="src.note_path"
-              class="text-xs text-gray-500 dark:text-gray-400 truncate"
-            >
-              📄 {{ src.note_title }}
-            </div>
+        <div class="max-w-3xl mx-auto flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2 text-xs text-red-600 dark:text-red-400">
+            <AppIcon name="alert" class="w-3.5 h-3.5 shrink-0" />
+            {{ streamError }}
           </div>
+          <button
+            class="text-xs text-red-400 dark:text-red-600 hover:text-red-600 dark:hover:text-red-400 transition-colors shrink-0"
+            @click="streamError = null"
+          >
+            Dismiss
+          </button>
         </div>
       </div>
-    </div>
+    </Transition>
 
-    <!-- Error -->
-    <p v-if="error" class="px-6 py-1 text-xs text-red-500 dark:text-red-400">{{ error }}</p>
+    <!-- Toolbar: stop streaming / clear session -->
+    <div
+      v-if="messages.length"
+      class="flex items-center justify-center gap-3 py-1.5 bg-white/80 dark:bg-gray-950/80"
+    >
+      <button
+        v-if="isStreaming"
+        class="btn-ghost text-xs px-3 py-1 h-auto border border-gray-200 dark:border-gray-700"
+        @click="stopStream"
+      >
+        <AppIcon name="x" class="w-3 h-3" />
+        Stop
+      </button>
+      <button
+        v-else
+        class="btn-ghost text-xs px-3 py-1 h-auto text-gray-400 dark:text-gray-600 hover:text-gray-600"
+        @click="handleClear"
+      >
+        <AppIcon name="trash" class="w-3 h-3" />
+        Clear chat
+      </button>
+    </div>
 
     <!-- Input -->
-    <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
-      <div class="flex gap-2 items-end max-w-3xl mx-auto">
-        <textarea
-          ref="inputEl"
-          v-model="input"
-          rows="1"
-          class="input flex-1 resize-none max-h-40 overflow-y-auto"
-          placeholder="Ask your vault..."
-          :disabled="isLoading || isStreaming"
-          @keydown="onKeydown"
-        />
-        <button
-          class="btn-primary h-10 shrink-0"
-          :disabled="!input.trim() || isLoading || isStreaming"
-          @click="send"
-        >
-          Send
-        </button>
-        <button
-          v-if="messages.length"
-          class="btn-ghost h-10 shrink-0"
-          title="Clear conversation"
-          @click="chat.clearSession"
-        >
-          <AppIcon name="x" class="w-4 h-4" />
-        </button>
-      </div>
-    </div>
-
+    <ChatInput :disabled="isBusy" @send="handleSend" />
   </div>
 </template>
+
+<style scoped>
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition: all 0.2s ease;
+}
+.slide-up-enter-from,
+.slide-up-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
+}
+</style>
