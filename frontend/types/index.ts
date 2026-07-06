@@ -48,6 +48,7 @@ export interface UiChatMessage {
   content: string;
   sources?: NoteSource[];
   isStreaming?: boolean;
+  error?: string;
   createdAt: string;
 }
 
