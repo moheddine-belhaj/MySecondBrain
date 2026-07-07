@@ -43,10 +43,15 @@ export const chatApi = {
 // ── Search ────────────────────────────────────────────────────────────────────
 
 export const searchApi = {
-  search(q: string, topK = 5) {
-    return $fetch<SearchResponse>(`${useBase()}/search`, {
-      query: { q, top_k: topK },
-    });
+  search(
+    q: string,
+    opts?: { topK?: number; scoreThreshold?: number; tags?: string[] }
+  ) {
+    const params: Record<string, string | number | string[]> = { q };
+    if (opts?.topK) params.top_k = opts.topK;
+    if (opts?.scoreThreshold) params.score_threshold = opts.scoreThreshold;
+    if (opts?.tags?.length) params.tags = opts.tags;
+    return $fetch<SearchResponse>(`${useBase()}/search`, { query: params });
   },
 };
 

@@ -93,9 +93,11 @@ export interface RetrievedChunk {
 
 export interface SearchResponse {
   query: string;
-  chunks: RetrievedChunk[];
-  total: number;
-  top_k: number;
+  results: RetrievedChunk[];
+  total_candidates: number;
+  deduplicated_count: number;
+  latency_ms: number;
+  filters_applied: boolean;
 }
 
 // ── Ingest ────────────────────────────────────────────────────────────────────
