@@ -61,7 +61,6 @@ onMounted(() => inputEl.value?.focus());
       v-model="inner"
       type="text"
       placeholder="Search your vault by meaning, not just keywords…"
-      :disabled="loading"
       :class="[
         'w-full pl-12 py-3.5 text-sm rounded-xl border transition-all duration-150',
         'bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100',
