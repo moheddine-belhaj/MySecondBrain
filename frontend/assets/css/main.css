@@ -102,7 +102,7 @@
   50% { opacity: 0; }
 }
 
-.streaming-cursor::after {
+.streaming-cursor > *:last-child::after {
   content: "▌";
   @apply text-brand-400 dark:text-brand-500;
   animation: cursor-blink 0.9s step-end infinite;

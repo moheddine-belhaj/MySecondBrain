@@ -14,26 +14,30 @@ function onScroll() {
   shouldAutoScroll.value = distFromBottom < 80;
 }
 
-async function scrollToBottom() {
+async function scrollToBottom(smooth = false) {
   if (!shouldAutoScroll.value) return;
   await nextTick();
   const el = containerEl.value;
   if (!el) return;
-  el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  if (smooth) {
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  } else {
+    el.scrollTop = el.scrollHeight;
+  }
 }
 
-// Watch for content changes (streaming deltas)
+// Instant scroll while streaming — smooth animations compete with rapid token updates
 watch(
   () => props.messages.map((m) => m.content).join(""),
-  scrollToBottom
+  () => scrollToBottom(false)
 );
 
-// Force scroll on new message arrival
+// Smooth scroll on new message arrival
 watch(
   () => props.messages.length,
   () => {
     shouldAutoScroll.value = true;
-    scrollToBottom();
+    scrollToBottom(true);
   }
 );
 </script>
