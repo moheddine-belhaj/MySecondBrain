@@ -45,6 +45,14 @@ export const useChatStore = defineStore("chat", () => {
     if (newSessionId) sessionId.value = newSessionId;
   }
 
+  function setError(id: string, errorText: string) {
+    const msg = messages.value.find((m) => m.id === id);
+    if (msg) {
+      msg.isStreaming = false;
+      msg.error = errorText;
+    }
+  }
+
   async function sendBlocking(content: string) {
     error.value = null;
     isLoading.value = true;
@@ -88,6 +96,7 @@ export const useChatStore = defineStore("chat", () => {
     addAssistantPlaceholder,
     appendDelta,
     finaliseAssistant,
+    setError,
     sendBlocking,
     clearSession,
   };

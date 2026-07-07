@@ -1,104 +1,180 @@
 <script setup lang="ts">
+import { watchDebounced } from "@vueuse/core";
 import { useSearchStore } from "~/stores/search";
 import { storeToRefs } from "pinia";
 
 definePageMeta({ layout: "default" });
 
 const store = useSearchStore();
-const { query, results, total, isLoading, error } = storeToRefs(store);
+const {
+  query,
+  results,
+  totalCandidates,
+  latencyMs,
+  isLoading,
+  error,
+  topK,
+  scoreThreshold,
+  activeTags,
+  availableTags,
+  hasActiveFilters,
+  activeFilterCount,
+} = storeToRefs(store);
 
-const q = ref("");
-const topK = ref(5);
+// Local input text — drives debounced search
+const inputText = ref(query.value);
+const hasSearched = ref(false);
+const showMobileFilters = ref(false);
 
-async function doSearch() {
-  if (!q.value.trim()) return;
-  await store.search(q.value, topK.value);
-}
+// Instant search: fires 350ms after the user stops typing
+watchDebounced(
+  inputText,
+  (val) => {
+    if (val.trim().length >= 2) {
+      store.search(val);
+      hasSearched.value = true;
+    } else if (!val.trim()) {
+      store.clear();
+      hasSearched.value = false;
+    }
+  },
+  { debounce: 350 }
+);
 
-function onKeydown(e: KeyboardEvent) {
-  if (e.key === "Enter") doSearch();
+// Re-search when filters change (if a query is active)
+watch(topK, () => { if (query.value) store.search(); });
+watch(scoreThreshold, () => { if (query.value) store.search(); });
+watch(activeTags, () => { if (query.value) store.search(); }, { deep: true });
+
+function immediateSearch(q: string) {
+  if (!q.trim()) return;
+  store.search(q);
+  hasSearched.value = true;
 }
 </script>
 
 <template>
-  <div class="max-w-3xl mx-auto px-6 py-6 space-y-6">
+  <div class="flex flex-col h-full overflow-hidden">
 
-    <!-- Search bar -->
-    <div class="flex gap-2">
-      <input
-        v-model="q"
-        type="text"
-        class="input flex-1"
-        placeholder="Search your vault..."
-        :disabled="isLoading"
-        @keydown="onKeydown"
-      />
-      <select v-model="topK" class="input w-20">
-        <option :value="3">Top 3</option>
-        <option :value="5">Top 5</option>
-        <option :value="10">Top 10</option>
-      </select>
-      <button class="btn-primary" :disabled="!q.trim() || isLoading" @click="doSearch">
-        <AppIcon name="search" class="w-4 h-4" />
-        Search
-      </button>
-    </div>
-
-    <!-- Error -->
-    <p v-if="error" class="text-sm text-red-500 dark:text-red-400">{{ error }}</p>
-
-    <!-- Loading -->
-    <div v-if="isLoading" class="text-center py-12 text-gray-400 dark:text-gray-500 text-sm">
-      Searching…
-    </div>
-
-    <!-- Results -->
-    <div v-else-if="results.length" class="space-y-4">
-      <p class="text-xs text-gray-500 dark:text-gray-400">
-        {{ total }} result{{ total !== 1 ? 's' : '' }} for "<strong>{{ query }}</strong>"
-      </p>
-
-      <div v-for="chunk in results" :key="`${chunk.note_path}-${chunk.chunk_index}`" class="card p-4 space-y-2">
-        <div class="flex items-start justify-between gap-3">
-          <div>
-            <p class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{ chunk.note_title }}</p>
-            <p class="text-xs text-gray-400 dark:text-gray-500 font-mono">{{ chunk.note_path }}</p>
-          </div>
-          <span class="shrink-0 text-xs font-medium px-2 py-0.5 rounded-full bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300">
-            {{ (chunk.score * 100).toFixed(0) }}%
-          </span>
-        </div>
-
-        <p v-if="chunk.heading_path.length" class="text-xs text-gray-400 dark:text-gray-500">
-          {{ chunk.heading_path.join(' › ') }}
-        </p>
-
-        <p class="text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">
-          {{ chunk.chunk_text }}
-        </p>
-
-        <div class="flex flex-wrap gap-1 pt-1">
-          <span
-            v-for="tag in chunk.tags"
-            :key="tag"
-            class="text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400"
-          >
-            #{{ tag }}
-          </span>
-        </div>
+    <!-- Sticky search bar -->
+    <div
+      class="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-800
+             bg-white/95 dark:bg-gray-950/95 backdrop-blur-sm shrink-0"
+    >
+      <div class="max-w-5xl mx-auto">
+        <SearchInput
+          v-model="inputText"
+          :loading="isLoading"
+          @search="immediateSearch"
+        />
       </div>
     </div>
 
-    <!-- Empty -->
-    <div v-else-if="query && !isLoading" class="text-center py-12 text-gray-400 dark:text-gray-500 text-sm">
-      No results for "{{ query }}"
-    </div>
+    <!-- Body -->
+    <div class="flex-1 flex overflow-hidden">
 
-    <!-- Initial state -->
-    <div v-else class="text-center py-16 space-y-2">
-      <AppIcon name="search" class="w-10 h-10 mx-auto text-gray-300 dark:text-gray-700" />
-      <p class="text-sm text-gray-400 dark:text-gray-500">Search across all your notes by semantic similarity</p>
-    </div>
+      <!-- Desktop filters sidebar -->
+      <aside
+        class="hidden lg:flex flex-col shrink-0 w-60 xl:w-64 overflow-y-auto
+               border-r border-gray-200 dark:border-gray-800
+               bg-gray-50/50 dark:bg-gray-900/30 px-4 py-5"
+      >
+        <SearchFilters
+          :top-k="topK"
+          :score-threshold="scoreThreshold"
+          :active-tags="activeTags"
+          :available-tags="availableTags"
+          :has-active="hasActiveFilters"
+          :active-count="activeFilterCount"
+          :disabled="isLoading"
+          @update:top-k="topK = $event"
+          @update:score-threshold="scoreThreshold = $event"
+          @toggle-tag="store.toggleTag($event)"
+          @clear="store.clearFilters()"
+        />
+      </aside>
 
+      <!-- Results area -->
+      <main class="flex-1 overflow-y-auto">
+        <div class="max-w-3xl mx-auto px-4 sm:px-6 py-5">
+
+          <!-- Mobile: filter toggle bar -->
+          <div class="flex items-center justify-between mb-4 lg:hidden">
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              <span v-if="results.length">{{ results.length }} result{{ results.length !== 1 ? "s" : "" }}</span>
+              <span v-else-if="!hasSearched">Semantic search</span>
+            </p>
+            <button
+              class="btn-ghost text-xs h-8 px-3 gap-1.5"
+              @click="showMobileFilters = !showMobileFilters"
+            >
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
+              </svg>
+              Filters
+              <span
+                v-if="activeFilterCount > 0"
+                class="inline-flex items-center justify-center w-4 h-4 rounded-full
+                       bg-brand-600 text-white text-[10px] font-medium"
+              >
+                {{ activeFilterCount }}
+              </span>
+            </button>
+          </div>
+
+          <!-- Mobile filter panel -->
+          <Transition name="slide-down">
+            <div
+              v-if="showMobileFilters"
+              class="lg:hidden mb-5 p-4 bg-gray-50 dark:bg-gray-900 rounded-xl
+                     border border-gray-200 dark:border-gray-800"
+            >
+              <SearchFilters
+                :top-k="topK"
+                :score-threshold="scoreThreshold"
+                :active-tags="activeTags"
+                :available-tags="availableTags"
+                :has-active="hasActiveFilters"
+                :active-count="activeFilterCount"
+                :disabled="isLoading"
+                @update:top-k="topK = $event"
+                @update:score-threshold="scoreThreshold = $event"
+                @toggle-tag="store.toggleTag($event)"
+                @clear="store.clearFilters()"
+              />
+            </div>
+          </Transition>
+
+          <!-- Results -->
+          <SearchResults
+            :results="results"
+            :query="query"
+            :is-loading="isLoading"
+            :error="error"
+            :total="totalCandidates"
+            :latency-ms="latencyMs"
+            :has-searched="hasSearched"
+          />
+        </div>
+      </main>
+    </div>
   </div>
 </template>
+
+<style scoped>
+.slide-down-enter-active,
+.slide-down-leave-active {
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+.slide-down-enter-from,
+.slide-down-leave-to {
+  opacity: 0;
+  max-height: 0;
+}
+.slide-down-enter-to,
+.slide-down-leave-from {
+  opacity: 1;
+  max-height: 500px;
+}
+</style>

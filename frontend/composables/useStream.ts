@@ -51,7 +51,7 @@ export function useStream() {
           try {
             const event = JSON.parse(payload) as StreamEvent;
             onEvent(event);
-            if (event.done) {
+            if (event.type === "done" || event.type === "error") {
               onDone?.();
               return;
             }

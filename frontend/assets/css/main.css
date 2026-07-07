@@ -18,32 +18,35 @@
     @apply bg-transparent;
   }
   ::-webkit-scrollbar-thumb {
-    @apply bg-gray-300 dark:bg-gray-700 rounded-full;
+    @apply bg-gray-200 dark:bg-gray-800 rounded-full;
   }
 }
 
 @layer components {
   .btn {
     @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm
-      transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2;
+      transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-offset-1;
   }
 
   .btn-primary {
     @apply btn bg-brand-600 text-white hover:bg-brand-700
-      focus:ring-brand-500 dark:focus:ring-offset-gray-950;
+      focus:ring-brand-500 dark:focus:ring-offset-gray-950
+      disabled:opacity-40 disabled:cursor-not-allowed;
   }
 
   .btn-ghost {
-    @apply btn bg-transparent text-gray-700 dark:text-gray-300
+    @apply btn bg-transparent text-gray-600 dark:text-gray-400
       hover:bg-gray-100 dark:hover:bg-gray-800
-      focus:ring-gray-400;
+      hover:text-gray-900 dark:hover:text-gray-100
+      focus:ring-gray-400
+      disabled:opacity-40 disabled:cursor-not-allowed;
   }
 
   .input {
     @apply block w-full rounded-lg border border-gray-200 dark:border-gray-700
       bg-white dark:bg-gray-900 px-3 py-2 text-sm
       placeholder:text-gray-400 dark:placeholder:text-gray-500
-      focus:outline-none focus:ring-2 focus:ring-brand-500
+      focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent
       transition-colors duration-150;
   }
 
@@ -51,4 +54,57 @@
     @apply bg-white dark:bg-gray-900 rounded-xl border border-gray-200
       dark:border-gray-800 shadow-sm;
   }
+}
+
+/* ── Markdown / Prose overrides ─────────────────────────────────────────────── */
+@layer utilities {
+  .prose-chat {
+    @apply prose prose-sm dark:prose-invert max-w-none
+      prose-p:leading-relaxed prose-p:my-2
+      prose-headings:font-semibold prose-headings:my-3
+      prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5
+      prose-blockquote:border-brand-400 prose-blockquote:text-gray-500 dark:prose-blockquote:text-gray-400
+      prose-hr:border-gray-200 dark:prose-hr:border-gray-700;
+  }
+
+  /* Terminal-style code blocks */
+  .prose-chat pre {
+    @apply bg-gray-950 dark:bg-gray-950 text-gray-100 rounded-lg border border-gray-800
+      text-xs leading-relaxed my-3 overflow-x-auto;
+  }
+
+  .prose-chat pre code {
+    @apply text-gray-100 bg-transparent p-0 text-xs font-mono;
+  }
+
+  /* Inline code */
+  .prose-chat :not(pre) > code {
+    @apply text-brand-500 dark:text-brand-400 bg-gray-100 dark:bg-gray-800
+      px-1.5 py-0.5 rounded text-[0.8em] font-mono font-normal;
+  }
+
+  .prose-chat table {
+    @apply text-xs;
+  }
+
+  .prose-chat th {
+    @apply bg-gray-50 dark:bg-gray-800 font-semibold;
+  }
+
+  .prose-chat td, .prose-chat th {
+    @apply border border-gray-200 dark:border-gray-700 px-3 py-1.5;
+  }
+}
+
+/* ── Streaming cursor ────────────────────────────────────────────────────────── */
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.streaming-cursor > *:last-child::after {
+  content: "▌";
+  @apply text-brand-400 dark:text-brand-500;
+  animation: cursor-blink 0.9s step-end infinite;
+  margin-left: 1px;
 }

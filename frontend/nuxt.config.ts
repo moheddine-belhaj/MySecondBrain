@@ -1,6 +1,8 @@
 export default defineNuxtConfig({
   devtools: { enabled: true },
 
+  components: [{ path: "~/components", pathPrefix: false }],
+
   modules: ["@nuxtjs/tailwindcss", "@pinia/nuxt", "@vueuse/nuxt"],
 
   css: ["~/assets/css/main.css"],
