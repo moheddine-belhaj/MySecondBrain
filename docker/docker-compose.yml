@@ -27,7 +27,7 @@ services:
   #   6333 → REST API + built-in web UI (http://localhost:6333/dashboard)
   #   6334 → gRPC (high-throughput; unused in dev but useful for prod tuning)
   qdrant:
-    image: qdrant/qdrant:v1.12.4
+    image: qdrant/qdrant:v1.18.0
     container_name: second-brain-qdrant
     networks: [second-brain-net]
     ports:
