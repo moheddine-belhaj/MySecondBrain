@@ -65,9 +65,9 @@ uvicorn app.main:app --reload
 cd frontend && npm install && npm run dev
 ```
 
-### dev
+## dev
 
-#### BE
+### BE
 
 ```bash
 source .venv/bin/activate
@@ -77,7 +77,12 @@ source .venv/bin/activate
 uvicorn app.main:app --reload --port 8000
 ```
 
+### BE tests
 
+```bash
+# indexing
+.venv/bin/python -m pytest tests/services/indexing/ -v
+```
 ## Stack
 
 | Layer | Technology |
