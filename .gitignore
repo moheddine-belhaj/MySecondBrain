@@ -26,6 +26,9 @@ vault/.obsidian/
 # Docker volumes
 docker/data/
 
+# Incremental index state (generated, not source)
+backend/data/index_state.json
+
 # OS
 .DS_Store
 .claude/
