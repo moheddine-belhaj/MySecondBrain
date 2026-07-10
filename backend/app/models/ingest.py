@@ -3,6 +3,22 @@ from typing import Literal
 from pydantic import BaseModel
 
 
+class SyncStatus(BaseModel):
+    """Response model for POST /ingest/sync and GET /ingest/sync/status."""
+
+    status: Literal["completed", "no_changes", "failed", "never_run"]
+    new_notes: int = 0
+    modified_notes: int = 0
+    deleted_notes: int = 0
+    unchanged_notes: int = 0
+    new_chunks: int = 0
+    duration_ms: float | None = None
+    last_run_at: str | None = None
+    scheduler_active: bool = False
+    sync_interval_minutes: int = 0
+    message: str | None = None
+
+
 class IngestStatus(BaseModel):
     status: Literal["pending", "running", "completed", "failed"]
     total_notes: int = 0

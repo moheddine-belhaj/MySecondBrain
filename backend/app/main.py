@@ -1,5 +1,7 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncGenerator
 
 import httpx
@@ -14,9 +16,12 @@ from app.config.settings import settings
 from app.exceptions import register_exception_handlers
 from app.logging_config import setup_logging
 from app.middleware import LoggingMiddleware, RequestIDMiddleware
+from app.services.indexing import IndexStateStore, IncrementalSyncEngine
+from app.services.ingestion import MarkdownChunker
 from app.services.llm.ollama import OllamaService
 from app.services.security.rate_limiter import RateLimiter
 from app.services.session.store import SessionStore
+from app.services.vault.scanner import VaultScanner
 from app.services.vector.client import QdrantService
 
 logger = logging.getLogger("app.main")
@@ -142,11 +147,75 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             },
         )
 
+        # ── Incremental sync engine ────────────────────────────────────────────
+        vault_path = Path(settings.vault_path).resolve()
+        state_store = IndexStateStore(Path(settings.index_state_path).resolve())
+        app.state.sync_engine = IncrementalSyncEngine(
+            scanner=VaultScanner(vault_path),
+            chunker=MarkdownChunker(
+                chunk_size=settings.chunk_size,
+                chunk_overlap=settings.chunk_overlap,
+            ),
+            embedding_provider=ollama,
+            qdrant=app.state.qdrant_service,
+            state_store=state_store,
+            batch_size=settings.embed_batch_size,
+        )
+        logger.info(
+            "Sync engine ready",
+            extra={
+                "vault": str(vault_path),
+                "state_file": str(state_store.path),
+            },
+        )
+
+        # ── Optional background scheduler ──────────────────────────────────────
+        sync_task: asyncio.Task | None = None
+        if settings.sync_interval_minutes > 0:
+            sync_task = asyncio.create_task(
+                _auto_sync_loop(app.state.sync_engine, settings.sync_interval_minutes * 60)
+            )
+            app.state.sync_task = sync_task
+            logger.info(
+                "Auto-sync scheduler started",
+                extra={"interval_minutes": settings.sync_interval_minutes},
+            )
+        else:
+            app.state.sync_task = None
+            logger.info("Auto-sync scheduler disabled (sync_interval_minutes=0)")
+
         yield
+
+        if sync_task is not None:
+            sync_task.cancel()
+            try:
+                await sync_task
+            except asyncio.CancelledError:
+                pass
 
         await qdrant_client.close()
 
     logger.info("Shutdown complete")
+
+
+async def _auto_sync_loop(engine: IncrementalSyncEngine, interval_seconds: int) -> None:
+    """Background task: run incremental sync every `interval_seconds`."""
+    logger = logging.getLogger("app.sync_scheduler")
+    while True:
+        await asyncio.sleep(interval_seconds)
+        try:
+            stats = await engine.sync()
+            logger.info(
+                "Scheduled sync complete",
+                extra={
+                    "new": stats.new_notes,
+                    "modified": stats.modified_notes,
+                    "deleted": stats.deleted_notes,
+                    "errors": len(stats.errors),
+                },
+            )
+        except Exception:
+            logger.exception("Scheduled sync failed")
 
 
 def create_app() -> FastAPI:

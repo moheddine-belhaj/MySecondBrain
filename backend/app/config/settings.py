@@ -66,6 +66,12 @@ class Settings(BaseSettings):
     # ── Vault ─────────────────────────────────────────────────────────────────
     vault_path: str = "./vault"
 
+    # ── Incremental indexing ───────────────────────────────────────────────────
+    # Path where the sync engine writes its {note_path: hash} state file.
+    index_state_path: str = "./data/index_state.json"
+    # 0 = scheduler disabled; >0 = run sync every N minutes automatically.
+    sync_interval_minutes: int = 0
+
     # ── Ingestion ─────────────────────────────────────────────────────────────
     chunk_size: int = 512
     chunk_overlap: int = 64
