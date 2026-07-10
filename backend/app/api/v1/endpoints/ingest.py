@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.config.settings import settings
 from app.dependencies import EmbedDep, IngestRateLimitDep, QdrantDep
@@ -12,7 +12,9 @@ from app.models.ingest import (
     NoteChunkPreview,
     NotePreview,
     ScanResponse,
+    SyncStatus,
 )
+from app.services.indexing import IncrementalSyncEngine
 from app.services.ingestion import EmbeddingPipeline, MarkdownChunker
 from app.services.vault import VaultScanner
 
@@ -193,3 +195,82 @@ async def trigger_ingest(
 @router.get("/status", response_model=IngestStatus, summary="Get ingestion status")
 async def ingest_status() -> IngestStatus:
     return IngestStatus(status="pending", message="No ingestion run yet.")
+
+
+@router.post("/sync", response_model=SyncStatus, summary="Run incremental sync")
+async def incremental_sync(
+    request: Request,
+    _rl: IngestRateLimitDep,
+) -> SyncStatus:
+    """Detect and index only changed vault content.
+
+    Compares current file hashes against the persisted state from the last
+    run. Only new, modified, and deleted notes are processed — unchanged notes
+    are skipped entirely.
+
+    Returns counts of new/modified/deleted/unchanged notes, chunks embedded,
+    and wall-clock duration. Faster than POST /ingest for incremental updates.
+    """
+    engine: IncrementalSyncEngine = request.app.state.sync_engine
+    stats = await engine.sync()
+
+    status_str: str
+    if stats.errors and not stats.has_changes:
+        status_str = "failed"
+    elif not stats.has_changes:
+        status_str = "no_changes"
+    else:
+        status_str = "failed" if stats.errors else "completed"
+
+    last_run = engine.last_run_at
+    scheduler_active = getattr(request.app.state, "sync_task", None) is not None
+
+    return SyncStatus(
+        status=status_str,  # type: ignore[arg-type]
+        new_notes=stats.new_notes,
+        modified_notes=stats.modified_notes,
+        deleted_notes=stats.deleted_notes,
+        unchanged_notes=stats.unchanged_notes,
+        new_chunks=stats.new_chunks,
+        duration_ms=stats.duration_ms,
+        last_run_at=last_run.isoformat() if last_run else None,
+        scheduler_active=scheduler_active,
+        sync_interval_minutes=settings.sync_interval_minutes,
+        message=f"{len(stats.errors)} error(s) during sync." if stats.errors else None,
+    )
+
+
+@router.get("/sync/status", response_model=SyncStatus, summary="Last sync status")
+async def sync_status(request: Request) -> SyncStatus:
+    """Return the result of the most recent incremental sync.
+
+    Returns status 'never_run' if no sync has been triggered yet in this
+    server session (state file may still exist on disk from a previous run).
+    """
+    engine: IncrementalSyncEngine = request.app.state.sync_engine
+    last_stats = engine.last_stats
+    last_run = engine.last_run_at
+    scheduler_active = getattr(request.app.state, "sync_task", None) is not None
+
+    if last_stats is None:
+        return SyncStatus(
+            status="never_run",
+            scheduler_active=scheduler_active,
+            sync_interval_minutes=settings.sync_interval_minutes,
+        )
+
+    status_str = "failed" if last_stats.errors else ("no_changes" if not last_stats.has_changes else "completed")
+
+    return SyncStatus(
+        status=status_str,  # type: ignore[arg-type]
+        new_notes=last_stats.new_notes,
+        modified_notes=last_stats.modified_notes,
+        deleted_notes=last_stats.deleted_notes,
+        unchanged_notes=last_stats.unchanged_notes,
+        new_chunks=last_stats.new_chunks,
+        duration_ms=last_stats.duration_ms,
+        last_run_at=last_run.isoformat() if last_run else None,
+        scheduler_active=scheduler_active,
+        sync_interval_minutes=settings.sync_interval_minutes,
+        message=f"{len(last_stats.errors)} error(s) during last sync." if last_stats.errors else None,
+    )
