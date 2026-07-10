@@ -65,6 +65,18 @@ uvicorn app.main:app --reload
 cd frontend && npm install && npm run dev
 ```
 
+### dev
+
+#### BE
+
+```bash
+source .venv/bin/activate
+```
+
+```bash 
+uvicorn app.main:app --reload --port 8000
+```
+
 
 ## Stack
 
