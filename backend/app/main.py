@@ -19,6 +19,7 @@ from app.middleware import LoggingMiddleware, RequestIDMiddleware
 from app.services.indexing import IndexStateStore, IncrementalSyncEngine
 from app.services.ingestion import MarkdownChunker
 from app.services.llm.ollama import OllamaService
+from app.services.retrieval.keyword_index import KeywordIndex
 from app.services.security.rate_limiter import RateLimiter
 from app.services.session.store import SessionStore
 from app.services.vault.scanner import VaultScanner
@@ -168,6 +169,22 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 "state_file": str(state_store.path),
             },
         )
+
+        # ── Keyword index (BM25) ──────────────────────────────────────────────
+        keyword_index = KeywordIndex()
+        app.state.keyword_index = keyword_index
+        try:
+            entries = await app.state.qdrant_service.scroll_all_chunks()
+            await asyncio.to_thread(keyword_index.build, entries)
+            logger.info(
+                "Keyword index built at startup",
+                extra={"corpus_size": keyword_index.corpus_size},
+            )
+        except Exception:
+            logger.warning(
+                "Keyword index not built at startup — collection may be empty. "
+                "Will build on first hybrid/keyword search."
+            )
 
         # ── Optional background scheduler ──────────────────────────────────────
         sync_task: asyncio.Task | None = None
