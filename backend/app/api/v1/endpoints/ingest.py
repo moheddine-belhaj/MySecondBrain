@@ -139,6 +139,7 @@ async def preview_chunks() -> ChunkingPreviewResponse:
 
 @router.post("", response_model=IngestStatus, summary="Trigger vault ingestion")
 async def trigger_ingest(
+    request: Request,
     embedding_provider: EmbedDep,
     qdrant_service: QdrantDep,
     _rl: IngestRateLimitDep,
@@ -173,6 +174,11 @@ async def trigger_ingest(
         if stats.errors
         else None
     )
+
+    # Invalidate BM25 keyword index so next search rebuilds from updated corpus.
+    kw_index = getattr(request.app.state, "keyword_index", None)
+    if kw_index is not None:
+        kw_index.invalidate()
 
     logger.info(
         "Ingest pipeline finished",
@@ -213,6 +219,12 @@ async def incremental_sync(
     """
     engine: IncrementalSyncEngine = request.app.state.sync_engine
     stats = await engine.sync()
+
+    # Invalidate BM25 keyword index when content changed so next search rebuilds.
+    if stats.has_changes:
+        kw_index = getattr(request.app.state, "keyword_index", None)
+        if kw_index is not None:
+            kw_index.invalidate()
 
     status_str: str
     if stats.errors and not stats.has_changes:
