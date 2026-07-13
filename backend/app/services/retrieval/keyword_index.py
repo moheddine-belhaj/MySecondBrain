@@ -95,6 +95,18 @@ class KeywordIndex:
         chunk_ids = [cid for cid, _ in entries]
         payloads = {cid: payload for cid, payload in entries}
         tokenized = [tokenize(payload.get("chunk_text", "")) for _, payload in entries]
+
+        # BM25Okapi raises ZeroDivisionError when no term appears across any doc
+        # (e.g. all docs have empty text or only stop words). Treat as empty index.
+        if not any(tokenized):
+            with self._lock:
+                self._bm25 = None
+                self._chunk_ids = chunk_ids
+                self._payloads = payloads
+                self._stale = False
+            logger.info("KeywordIndex: all docs have no tokens — BM25 index empty", extra={"corpus_size": len(chunk_ids)})
+            return
+
         bm25 = BM25Okapi(tokenized)
 
         with self._lock:

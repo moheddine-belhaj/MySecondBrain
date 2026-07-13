@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.services.retrieval.engine import RetrievalEngine, _has_active_filters, _to_retrieved_chunk
+from app.services.retrieval.keyword_index import KeywordIndex
 from app.services.retrieval.models import RetrievalQuery
 from app.services.vector.models import SearchFilter, SearchResult
 
@@ -249,3 +250,198 @@ class TestHasActiveFilters:
     def test_note_title_makes_true(self):
         q = RetrievalQuery(text="q", filters=SearchFilter(note_title="My Note"))
         assert _has_active_filters(q) is True
+
+
+# ── Hybrid / Keyword modes ────────────────────────────────────────────────────
+
+def _make_keyword_index(corpus: dict[str, str]) -> KeywordIndex:
+    """Build a real KeywordIndex from chunk_id → chunk_text mapping."""
+    idx = KeywordIndex()
+    idx.build([(cid, {"chunk_text": text}) for cid, text in corpus.items()])
+    return idx
+
+
+def _make_hybrid_engine(
+    search_returns: list[SearchResult] | None = None,
+    scroll_returns: list[tuple[str, dict]] | None = None,
+    keyword_index: KeywordIndex | None = None,
+) -> tuple[RetrievalEngine, MagicMock, MagicMock]:
+    embedder = MagicMock()
+    embedder.embed = AsyncMock(return_value=VECTOR)
+
+    qdrant = MagicMock()
+    qdrant.search = AsyncMock(return_value=search_returns or [])
+    qdrant.scroll_all_chunks = AsyncMock(return_value=scroll_returns or [])
+
+    engine = RetrievalEngine(
+        embedding_provider=embedder,
+        qdrant=qdrant,
+        keyword_index=keyword_index,
+        default_top_k=10,
+        default_score_threshold=0.0,
+        default_max_chunks_per_note=2,
+        default_over_fetch_factor=3,
+    )
+    return engine, embedder, qdrant
+
+
+class TestSemanticMode:
+    async def test_semantic_mode_embeds_and_searches(self):
+        engine, embedder, qdrant = _make_hybrid_engine([_search_result()])
+        result = await engine.retrieve(RetrievalQuery(text="q", mode="semantic"))
+        embedder.embed.assert_awaited_once()
+        qdrant.search.assert_awaited_once()
+
+    async def test_semantic_mode_does_not_use_keyword_index(self):
+        idx = _make_keyword_index({"c1": "asyncio event loop"})
+        engine, _, _ = _make_hybrid_engine([_search_result()], keyword_index=idx)
+        await engine.retrieve(RetrievalQuery(text="asyncio", mode="semantic"))
+        # corpus_size unchanged — no scroll or rebuild triggered
+        assert idx.corpus_size == 1
+
+    async def test_semantic_mode_returns_correct_retrieval_mode_field(self):
+        engine, _, _ = _make_hybrid_engine([_search_result()])
+        result = await engine.retrieve(RetrievalQuery(text="q", mode="semantic"))
+        assert result.retrieval_mode == "semantic"
+
+    async def test_semantic_mode_keyword_candidates_is_zero(self):
+        engine, _, _ = _make_hybrid_engine([_search_result()])
+        result = await engine.retrieve(RetrievalQuery(text="q", mode="semantic"))
+        assert result.keyword_candidates == 0
+
+
+class TestKeywordMode:
+    async def test_keyword_mode_does_not_embed(self):
+        idx = _make_keyword_index({"c1": "asyncio event loop"})
+        engine, embedder, _ = _make_hybrid_engine(keyword_index=idx)
+        await engine.retrieve(RetrievalQuery(text="asyncio", mode="keyword"))
+        embedder.embed.assert_not_awaited()
+
+    async def test_keyword_mode_does_not_call_qdrant_search(self):
+        idx = _make_keyword_index({"c1": "asyncio event loop"})
+        engine, _, qdrant = _make_hybrid_engine(keyword_index=idx)
+        await engine.retrieve(RetrievalQuery(text="asyncio", mode="keyword"))
+        qdrant.search.assert_not_awaited()
+
+    async def test_keyword_mode_returns_correct_retrieval_mode_field(self):
+        idx = _make_keyword_index({"c1": "asyncio event loop"})
+        engine, _, _ = _make_hybrid_engine(keyword_index=idx)
+        result = await engine.retrieve(RetrievalQuery(text="asyncio", mode="keyword"))
+        assert result.retrieval_mode == "keyword"
+
+    async def test_keyword_mode_finds_matching_chunk(self):
+        # 3-doc corpus so "asyncio" (df=1, N=3) has positive IDF
+        idx = _make_keyword_index({
+            "c1": "asyncio event loop python",
+            "c2": "rust memory safety",
+            "c3": "go programming language",
+        })
+        engine, _, _ = _make_hybrid_engine(keyword_index=idx)
+        result = await engine.retrieve(RetrievalQuery(text="asyncio", mode="keyword"))
+        assert len(result.chunks) == 1
+        assert result.chunks[0].chunk_id == "c1"
+
+    async def test_keyword_mode_no_index_returns_empty(self):
+        engine, _, _ = _make_hybrid_engine(keyword_index=None)
+        result = await engine.retrieve(RetrievalQuery(text="asyncio", mode="keyword"))
+        assert result.chunks == []
+
+    async def test_keyword_mode_stale_index_triggers_scroll_rebuild(self):
+        idx = _make_keyword_index({"c1": "asyncio event loop"})
+        idx.invalidate()
+        engine, _, qdrant = _make_hybrid_engine(
+            scroll_returns=[
+                ("c1", {"chunk_text": "asyncio event loop", "chunk_id": "c1"}),
+                ("_d1", {"chunk_text": "rust memory safety", "chunk_id": "_d1"}),
+                ("_d2", {"chunk_text": "go programming", "chunk_id": "_d2"}),
+            ],
+            keyword_index=idx,
+        )
+        await engine.retrieve(RetrievalQuery(text="asyncio", mode="keyword"))
+        qdrant.scroll_all_chunks.assert_awaited_once()
+        assert idx.is_stale is False
+
+
+class TestHybridMode:
+    async def test_hybrid_mode_embeds_and_searches_qdrant(self):
+        idx = _make_keyword_index({"c1": "asyncio event loop"})
+        engine, embedder, qdrant = _make_hybrid_engine(
+            search_returns=[_search_result("c1")],
+            keyword_index=idx,
+        )
+        await engine.retrieve(RetrievalQuery(text="asyncio", mode="hybrid"))
+        embedder.embed.assert_awaited_once()
+        qdrant.search.assert_awaited_once()
+
+    async def test_hybrid_mode_returns_correct_retrieval_mode_field(self):
+        idx = _make_keyword_index({"c1": "asyncio"})
+        engine, _, _ = _make_hybrid_engine(
+            search_returns=[_search_result("c1")],
+            keyword_index=idx,
+        )
+        result = await engine.retrieve(RetrievalQuery(text="asyncio", mode="hybrid"))
+        assert result.retrieval_mode == "hybrid"
+
+    async def test_hybrid_mode_keyword_candidates_count_is_bm25_hits(self):
+        # 3-doc corpus: c1 and c2 have "asyncio" (df=2, N=3 → positive IDF)
+        # c3 is a distractor → IDF for "asyncio" is log(1.5/2.5) which is negative, clipped
+        # Use a term unique to each to guarantee positive IDF: "coroutine" only in c1
+        idx = _make_keyword_index({
+            "c1": "asyncio coroutine event loop",
+            "c2": "asyncio task scheduling",
+            "c3": "rust memory safety borrow checker",
+        })
+        engine, _, _ = _make_hybrid_engine(
+            search_returns=[_search_result("c1")],
+            keyword_index=idx,
+        )
+        result = await engine.retrieve(RetrievalQuery(text="coroutine", mode="hybrid"))
+        # "coroutine" is unique to c1 (df=1, N=3 → positive IDF) → 1 keyword hit
+        assert result.keyword_candidates == 1
+
+    async def test_hybrid_mode_includes_keyword_only_results(self):
+        # Qdrant returns c1; BM25 finds c2 (unique term "coroutine")
+        # Need 3-doc corpus for positive IDF on "coroutine"
+        idx = _make_keyword_index({
+            "c2": "coroutine asyncio event loop",
+            "_d1": "rust memory safety borrow checker",
+            "_d2": "go programming language concurrency",
+        })
+        engine, _, _ = _make_hybrid_engine(
+            search_returns=[_search_result("c1", note_id="n1", heading_path=["H1"])],
+            keyword_index=idx,
+        )
+        result = await engine.retrieve(
+            RetrievalQuery(text="coroutine", mode="hybrid", top_k=10, deduplicate=False)
+        )
+        chunk_ids = {c.chunk_id for c in result.chunks}
+        assert "c1" in chunk_ids
+        assert "c2" in chunk_ids
+
+    async def test_hybrid_mode_chunk_in_both_lists_is_top_result(self):
+        # c1 appears in both semantic and keyword → should win RRF
+        idx = _make_keyword_index({
+            "c1": "asyncio event loop python",
+            "c2": "asyncio coroutine",
+        })
+        engine, _, _ = _make_hybrid_engine(
+            search_returns=[
+                _search_result("c1", score=0.9, note_id="n1", heading_path=["H1"]),
+                _search_result("c3", score=0.8, note_id="n3", heading_path=["H3"]),
+            ],
+            keyword_index=idx,
+        )
+        result = await engine.retrieve(
+            RetrievalQuery(text="asyncio", mode="hybrid", top_k=10, deduplicate=False)
+        )
+        # c1 is in both lists → highest RRF score
+        assert result.chunks[0].chunk_id == "c1"
+
+    async def test_default_mode_is_hybrid(self):
+        idx = _make_keyword_index({"c1": "asyncio event loop"})
+        engine, _, _ = _make_hybrid_engine(
+            search_returns=[_search_result("c1")],
+            keyword_index=idx,
+        )
+        result = await engine.retrieve(RetrievalQuery(text="asyncio"))
+        assert result.retrieval_mode == "hybrid"
