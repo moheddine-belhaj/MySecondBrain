@@ -1,8 +1,19 @@
 # MySecondBrain
 
+![MySecondBrain UI](assets/images/UI.png)
+
 A local-first, privacy-first **Retrieval-Augmented Generation (RAG)** system that turns an Obsidian markdown vault into a searchable, conversational knowledge base. It scans and chunks your notes, embeds and indexes them in a vector database, and answers questions grounded in your own content entirely on your own machine, with no data sent to third-party APIs.
 
 This project was primarily built as a **learning project** to understand how to design and build a production-style RAG system end to end — ingestion, chunking, embeddings, hybrid retrieval, prompt construction, LLM interaction, and evaluation  while following good software engineering practices (typed configuration, layered architecture, dependency injection, structured logging, security hardening, and test coverage).
+
+## Built With
+
+[![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Qdrant](https://img.shields.io/badge/Qdrant-DC244C?style=for-the-badge&logo=qdrant&logoColor=white)](https://qdrant.tech/)
+[![Ollama](https://img.shields.io/badge/Ollama-000000?style=for-the-badge&logo=ollama&logoColor=white)](https://ollama.com/)
+[![Vue.js](https://img.shields.io/badge/Vue.js-4FC08D?style=for-the-badge&logo=vuedotjs&logoColor=white)](https://vuejs.org/)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
 
 ## Features
 
@@ -231,6 +242,10 @@ curl -X POST http://localhost:8000/api/v1/chat/rag \
   -H "Content-Type: application/json" \
   -d '{"session_id": "demo", "messages": [{"role": "user", "content": "your question"}]}'
 ```
+
+For a full catalog of ready-to-run requests (method, URL, request body, and which
+part of the system each one exercises — ingestion, hybrid search, plain chat, RAG
+chat, streaming, sessions, security) see [docs/API_TESTING.md](docs/API_TESTING.md).
 
 Or use the Nuxt UI at `http://localhost:3000` for chat and semantic search.
 
