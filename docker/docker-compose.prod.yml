@@ -6,24 +6,65 @@
 #   - source code is NOT bind-mounted (image is self-contained)
 #   - debug and Swagger UI are disabled
 #   - HMR ports are not exposed
-#   - backend runs 2 uvicorn workers
+#   - backend runs 2 uvicorn workers with graceful shutdown timeout
+#   - resource limits prevent runaway memory usage
+#   - data/ volume persists index state across container restarts
+
+volumes:
+  backend_data:   # persists data/index_state.json across container restarts
 
 services:
+  qdrant:
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+        reservations:
+          memory: 256m
+    restart: always
+
+  ollama:
+    deploy:
+      resources:
+        limits:
+          memory: 8g      # adjust to model size: llama3.2 needs ~4g, larger models more
+        reservations:
+          memory: 2g
+    restart: always
+
   backend:
     build:
       target: prod
     volumes:
-      - ../vault:/app/vault:ro           # vault still needed at runtime
+      - ../vault:/app/vault:ro     # vault still needed at runtime
+      - backend_data:/app/data     # persists index_state.json
     environment:
       DEBUG: "false"
+      ENVIRONMENT: production
+      LOG_FORMAT: json
+      LOG_LEVEL: INFO
     ports:
       - "8000:8000"
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+        reservations:
+          memory: 128m
+    restart: always
 
   frontend:
     build:
       target: prod
-    volumes: []                          # no bind mounts in prod
+    volumes: []                    # no bind mounts in prod
     ports:
       - "3000:3000"
     environment:
       NODE_ENV: production
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+        reservations:
+          memory: 64m
+    restart: always
