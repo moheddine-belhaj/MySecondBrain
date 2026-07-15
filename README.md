@@ -43,14 +43,6 @@ Browser
 
 All services run as Docker containers on a single bridge network, using Docker DNS for service discovery (`qdrant:6333`, `ollama:11434`, `backend:8000`).
 
-**Search** (`GET /api/v1/search`): the query is embedded and matched against Qdrant (semantic) and, in parallel, matched against an in-process BM25 keyword index; the two rankings are fused with weighted RRF, deduplicated, and trimmed.
-
-**Chat** (`POST /api/v1/chat/rag`): retrieves top-k chunks via the hybrid search above, scans them for injected content, builds a prompt (system instructions + history + context + query) via LlamaIndex response synthesis, and returns an answer with cited sources.
-
-**Ingest** (`POST /api/v1/ingest`): scans the vault → chunks notes → embeds chunks via Ollama → upserts vectors into Qdrant → removes stale chunks → invalidates the BM25 index so the next search rebuilds it.
-
-**Incremental sync** (`POST /api/v1/ingest/sync`): diffs current vault file hashes against a persisted state file and re-indexes only what changed.
-
 See [docs/architecture.md](docs/architecture.md) for the full module map and the reasoning behind each design decision (why LlamaIndex, why Qdrant, why BM25 over sparse vectors, why RRF, etc.).
 
 ## Technology Stack
@@ -76,50 +68,6 @@ See [docs/architecture.md](docs/architecture.md) for the full module map and the
 | **JSON structured logging** (custom `logging_config.py`) | Observability | JSON output for production log aggregators, human-readable console output for local dev; request-ID middleware correlates logs per request. |
 | **Obsidian** | Source of truth for notes | The vault (`vault/`) is plain markdown, so it stays editable in Obsidian directly  the RAG system is additive, not a lock-in format. |
 
-## Project Structure
-
-```
-second-brain/
-├── backend/                     Python · FastAPI · LlamaIndex
-│   ├── app/
-│   │   ├── api/
-│   │   │   ├── system.py            /health, /readiness, /status, /models
-│   │   │   └── v1/endpoints/        chat.py · search.py · ingest.py
-│   │   ├── config/settings.py       Typed configuration (pydantic-settings)
-│   │   ├── models/                  Pydantic request/response schemas
-│   │   ├── services/
-│   │   │   ├── vault/                Vault scanner + markdown parser
-│   │   │   ├── ingestion/            Chunker + embedding pipeline
-│   │   │   ├── vector/                Qdrant client wrapper (QdrantService)
-│   │   │   ├── retrieval/            Hybrid search engine, ranker, deduplicator, BM25 index
-│   │   │   ├── llm/                   OllamaService + provider abstractions
-│   │   │   ├── synthesis/            Context builder + prompt templates + LlamaIndex synthesis
-│   │   │   ├── indexing/              Incremental sync engine + persisted state store
-│   │   │   ├── security/             Rate limiter, input/output sanitizers, injection detector, audit log
-│   │   │   └── session/               In-memory conversation session store
-│   │   ├── startup.py                Pre-flight dependency validation
-│   │   ├── main.py                    FastAPI app factory + lifespan (service wiring)
-│   │   ├── middleware.py              Request-ID + structured request logging
-│   │   ├── exceptions.py              Application error hierarchy + handlers
-│   │   └── logging_config.py          JSON/console log formatters
-│   ├── tests/                        unit/ · services/ (mirrors app/services/) · integration/
-│   ├── requirements/                 base.txt · dev.txt · server.txt
-│   ├── pyproject.toml                ruff, mypy, pytest configuration
-│   └── .env.example                  Documented environment variable template
-│
-├── frontend/                    Vue 3 · Nuxt 3 · TailwindCSS · Pinia
-│   ├── pages/                        index.vue (chat) · search.vue · settings.vue
-│   ├── components/                   chat/ · search/ · layout/ · ui/
-│   ├── composables/                  useHealth, useMarkdown, useStream, useTheme
-│   ├── stores/                       chat, search, ingest, ui (Pinia)
-│   ├── services/api.ts                $fetch wrappers for the backend API
-│   └── types/index.ts                 Shared frontend TypeScript types
-│
-├── vault/                       Obsidian markdown notes (git-ignored except structure)
-├── docker/                      docker-compose.yml · docker-compose.prod.yml · Dockerfiles
-├── scripts/                     pull_models.sh · backup.sh
-└── docs/                        architecture.md + per-task implementation notes
-```
 
 ## Prerequisites
 

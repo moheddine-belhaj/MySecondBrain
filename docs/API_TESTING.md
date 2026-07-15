@@ -166,10 +166,6 @@ Tests: `OllamaService.chat()` / `chat_stream()`, the session store
 
 ### Blocking
 
-```
-POST /api/v1/chat
-Content-Type: application/json
-```
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/chat \
@@ -187,11 +183,6 @@ message is the current turn), `session_id` (optional; omit to start a new sessio
 reuse the returned `session_id` on subsequent calls to keep conversation memory).
 
 ### Streaming (SSE)
-
-```
-POST /api/v1/chat/stream
-Content-Type: application/json
-```
 
 ```bash
 curl -N -X POST http://localhost:8000/api/v1/chat/stream \
