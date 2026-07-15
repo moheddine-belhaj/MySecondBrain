@@ -308,6 +308,35 @@ class QdrantService(VectorRepository):
         )
         logger.info("Deleted points by note_id", extra={"note_id": note_id})
 
+    async def scroll_all_chunks(self) -> list[tuple[str, dict]]:
+        """Return (chunk_id, full_payload) for every point in the collection.
+
+        Scrolls in batches of 1000 to avoid loading the entire collection
+        into memory at once. Suitable for personal vaults (<50k chunks).
+        """
+        entries: list[tuple[str, dict]] = []
+        offset = None
+
+        while True:
+            results, next_offset = await self._client.scroll(
+                collection_name=self._collection,
+                limit=1000,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            for point in results:
+                payload = point.payload or {}
+                chunk_id = payload.get("chunk_id")
+                if chunk_id:
+                    entries.append((chunk_id, payload))
+            if next_offset is None:
+                break
+            offset = next_offset
+
+        logger.debug("Scrolled all chunks", extra={"count": len(entries)})
+        return entries
+
     # ── Health ─────────────────────────────────────────────────────────────────
 
     async def health(self) -> bool:

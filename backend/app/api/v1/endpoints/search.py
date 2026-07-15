@@ -1,7 +1,8 @@
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Query
 
+from app.config.settings import settings
 from app.dependencies import ChatRateLimitDep, RetrievalDep, SecurityGuardDep
 from app.models.search import RetrievedChunkResponse, SearchResponse
 from app.services.retrieval.models import RetrievalQuery
@@ -11,19 +12,30 @@ from app.services.vector.models import SearchFilter
 router = APIRouter()
 
 
-@router.get("", response_model=SearchResponse, summary="Semantic search over vault")
+@router.get("", response_model=SearchResponse, summary="Hybrid search over vault")
 async def search(
     retrieval: RetrievalDep,
     guard: SecurityGuardDep,
     _rl: ChatRateLimitDep,
     q: str = Query(..., min_length=1, max_length=MAX_QUERY_LENGTH, description="Natural language search query"),
     top_k: int = Query(default=10, ge=1, le=50, description="Max chunks to return"),
-    score_threshold: float = Query(default=0.0, ge=0.0, le=1.0, description="Minimum similarity score"),
+    score_threshold: float = Query(default=0.0, ge=0.0, le=1.0, description="Minimum similarity score (semantic only)"),
     tags: Annotated[list[str] | None, Query(description="Filter by tags (OR match)")] = None,
     note_path: str | None = Query(default=None, description="Filter by exact note path"),
     deduplicate: bool = Query(default=True, description="Deduplicate chunks from the same heading/note"),
+    mode: Literal["semantic", "keyword", "hybrid"] | None = Query(
+        default=None,
+        description="Retrieval mode: semantic (vector only), keyword (BM25 only), hybrid (both). Defaults to server setting.",
+    ),
+    semantic_weight: float | None = Query(
+        default=None, ge=0.0, le=1.0,
+        description="RRF weight for the vector ranking (hybrid only). Defaults to server setting.",
+    ),
+    keyword_weight: float | None = Query(
+        default=None, ge=0.0, le=1.0,
+        description="RRF weight for the BM25 ranking (hybrid only). Defaults to server setting.",
+    ),
 ) -> SearchResponse:
-    # Sanitise + injection-check the query before retrieval
     clean_q = guard.validate_query(q, max_length=MAX_QUERY_LENGTH)
 
     filters: SearchFilter | None = None
@@ -37,6 +49,10 @@ async def search(
             score_threshold=score_threshold,
             filters=filters,
             deduplicate=deduplicate,
+            mode=mode or settings.hybrid_default_mode,  # type: ignore[arg-type]
+            semantic_weight=semantic_weight if semantic_weight is not None else settings.hybrid_semantic_weight,
+            keyword_weight=keyword_weight if keyword_weight is not None else settings.hybrid_keyword_weight,
+            rrf_k=settings.hybrid_rrf_k,
         )
     )
 
@@ -63,4 +79,6 @@ async def search(
         deduplicated_count=result.deduplicated_count,
         latency_ms=result.latency_ms,
         filters_applied=result.filters_applied,
+        retrieval_mode=result.retrieval_mode,
+        keyword_candidates=result.keyword_candidates,
     )

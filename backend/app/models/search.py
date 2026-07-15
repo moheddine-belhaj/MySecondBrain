@@ -29,3 +29,5 @@ class SearchResponse(BaseModel):
     deduplicated_count: int
     latency_ms: float
     filters_applied: bool
+    retrieval_mode: str = "semantic"
+    keyword_candidates: int = 0

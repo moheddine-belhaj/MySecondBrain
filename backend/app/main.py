@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator
@@ -19,16 +20,19 @@ from app.middleware import LoggingMiddleware, RequestIDMiddleware
 from app.services.indexing import IndexStateStore, IncrementalSyncEngine
 from app.services.ingestion import MarkdownChunker
 from app.services.llm.ollama import OllamaService
+from app.services.retrieval.keyword_index import KeywordIndex
 from app.services.security.rate_limiter import RateLimiter
 from app.services.session.store import SessionStore
 from app.services.vault.scanner import VaultScanner
 from app.services.vector.client import QdrantService
+from app.startup import StartupError, validate_startup
 
 logger = logging.getLogger("app.main")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    t_boot = time.monotonic()
     setup_logging(log_level=settings.log_level, log_format=settings.log_format)
     logger.info(
         "Starting",
@@ -38,6 +42,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             "env": settings.environment,
         },
     )
+
+    # ── Pre-flight checks ──────────────────────────────────────────────────────
+    try:
+        await validate_startup()
+    except StartupError as exc:
+        logger.critical("Startup validation failed — aborting", extra={"reason": str(exc)})
+        raise SystemExit(1) from exc
 
     # ── Ollama client ──────────────────────────────────────────────────────────
     # A single AsyncClient is shared for the lifetime of the process.
@@ -169,6 +180,22 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             },
         )
 
+        # ── Keyword index (BM25) ──────────────────────────────────────────────
+        keyword_index = KeywordIndex()
+        app.state.keyword_index = keyword_index
+        try:
+            entries = await app.state.qdrant_service.scroll_all_chunks()
+            await asyncio.to_thread(keyword_index.build, entries)
+            logger.info(
+                "Keyword index built at startup",
+                extra={"corpus_size": keyword_index.corpus_size},
+            )
+        except Exception:
+            logger.warning(
+                "Keyword index not built at startup — collection may be empty. "
+                "Will build on first hybrid/keyword search."
+            )
+
         # ── Optional background scheduler ──────────────────────────────────────
         sync_task: asyncio.Task | None = None
         if settings.sync_interval_minutes > 0:
@@ -184,7 +211,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             app.state.sync_task = None
             logger.info("Auto-sync scheduler disabled (sync_interval_minutes=0)")
 
+        boot_ms = round((time.monotonic() - t_boot) * 1000)
+        logger.info("Ready", extra={"boot_ms": boot_ms, "env": settings.environment})
+
         yield
+
+        t_shutdown = time.monotonic()
+        logger.info("Shutting down — draining in-flight requests")
 
         if sync_task is not None:
             sync_task.cancel()
@@ -194,8 +227,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 pass
 
         await qdrant_client.close()
+        shutdown_ms = round((time.monotonic() - t_shutdown) * 1000)
 
-    logger.info("Shutdown complete")
+    logger.info("Shutdown complete", extra={"shutdown_ms": shutdown_ms})
 
 
 async def _auto_sync_loop(engine: IncrementalSyncEngine, interval_seconds: int) -> None:

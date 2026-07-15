@@ -8,6 +8,9 @@ from starlette.responses import Response
 
 logger = logging.getLogger("app.requests")
 
+# Requests slower than this get an extra WARNING log — useful for alerting
+_SLOW_REQUEST_MS = 5_000
+
 
 class RequestIDMiddleware(BaseHTTPMiddleware):
     """Assigns a unique ID to every request.
@@ -46,14 +49,15 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         duration_ms = round((time.perf_counter() - start) * 1000, 2)
 
         request_id = getattr(request.state, "request_id", "-")
-        logger.info(
-            "Request",
-            extra={
-                "method": request.method,
-                "path": request.url.path,
-                "status_code": response.status_code,
-                "duration_ms": duration_ms,
-                "request_id": request_id,
-            },
-        )
+        log_extra = {
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": response.status_code,
+            "duration_ms": duration_ms,
+            "request_id": request_id,
+        }
+        if duration_ms > _SLOW_REQUEST_MS:
+            logger.warning("Slow request", extra=log_extra)
+        else:
+            logger.info("Request", extra=log_extra)
         return response

@@ -27,6 +27,7 @@ from app.config.settings import Settings, settings as _settings
 from app.exceptions import RateLimitError
 from app.services.llm.base import EmbeddingProvider, LLMProvider
 from app.services.retrieval.engine import RetrievalEngine
+from app.services.retrieval.keyword_index import KeywordIndex
 from app.services.security.audit_logger import log_rate_limit_exceeded
 from app.services.security.guard import SecurityGuard
 from app.services.session.store import SessionStore
@@ -54,9 +55,11 @@ async def get_qdrant_service(request: Request) -> VectorRepository:
 
 
 async def get_retrieval_engine(request: Request) -> RetrievalEngine:
+    keyword_index: KeywordIndex | None = getattr(request.app.state, "keyword_index", None)
     return RetrievalEngine(
         embedding_provider=request.app.state.embedding_provider,
         qdrant=request.app.state.qdrant_service,
+        keyword_index=keyword_index,
         default_top_k=_settings.retrieval_top_k,
         default_score_threshold=_settings.retrieval_score_threshold,
         default_max_chunks_per_note=_settings.retrieval_max_chunks_per_note,

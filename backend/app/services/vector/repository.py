@@ -119,6 +119,16 @@ class VectorRepository(ABC):
         """
         ...
 
+    @abstractmethod
+    async def scroll_all_chunks(self) -> list[tuple[str, dict]]:
+        """Return (chunk_id, full_payload) for every point in the collection.
+
+        Used by KeywordIndex.build() to construct the BM25 corpus. The payload
+        dict contains at least `chunk_text` plus all metadata fields used by
+        SearchResult.payload (note_title, note_path, tags, heading_path, etc.).
+        """
+        ...
+
     # ── Health ─────────────────────────────────────────────────────────────────
 
     @abstractmethod

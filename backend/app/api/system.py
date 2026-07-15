@@ -6,6 +6,11 @@ monitoring dashboards) rather than by application clients. They must:
   - Never return 5xx when a downstream service is down — use a degraded status
     instead so the app process itself stays "healthy" in the eyes of the
     orchestrator even when Qdrant or Ollama are temporarily unreachable.
+
+Probe semantics:
+  GET /health     — liveness: is the Python process alive?
+  GET /readiness  — readiness: can the process serve traffic? (checks dependencies)
+  GET /status     — detailed component health for dashboards
 """
 
 import logging
@@ -13,7 +18,7 @@ import time
 from enum import Enum
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from app.config.settings import settings
@@ -48,6 +53,7 @@ class StatusResponse(BaseModel):
     version: str
     environment: str
     components: dict[str, ComponentHealth]
+    keyword_index_size: int | None = None
 
 
 class ModelInfo(BaseModel):
@@ -127,6 +133,32 @@ async def health() -> HealthResponse:
 
 
 @router.get(
+    "/readiness",
+    response_model=HealthResponse,
+    summary="Readiness probe",
+    description=(
+        "Returns 200 when the process is ready to serve traffic — Qdrant and "
+        "Ollama are reachable. Returns 503 when any dependency is unavailable. "
+        "Kubernetes: use this for readinessProbe, /health for livenessProbe."
+    ),
+)
+async def readiness(request: Request) -> HealthResponse:
+    import asyncio
+
+    qdrant_health, ollama_health = await asyncio.gather(
+        _probe_qdrant(),
+        _probe_ollama(),
+    )
+    if any(
+        h.status == ServiceStatus.unavailable
+        for h in (qdrant_health, ollama_health)
+    ):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=503, detail="One or more dependencies are unavailable")
+    return HealthResponse(status="ok", version=settings.app_version)
+
+
+@router.get(
     "/status",
     response_model=StatusResponse,
     summary="Full system status",
@@ -136,7 +168,7 @@ async def health() -> HealthResponse:
         "worst-case component: ok → degraded → unavailable."
     ),
 )
-async def status_check() -> StatusResponse:
+async def status_check(request: Request) -> StatusResponse:
     import asyncio
 
     qdrant_health, ollama_health = await asyncio.gather(
@@ -146,7 +178,6 @@ async def status_check() -> StatusResponse:
 
     components = {"qdrant": qdrant_health, "ollama": ollama_health}
 
-    # Aggregate: worst component status bubbles up
     statuses = [c.status for c in components.values()]
     if any(s == ServiceStatus.unavailable for s in statuses):
         overall = ServiceStatus.unavailable
@@ -154,6 +185,9 @@ async def status_check() -> StatusResponse:
         overall = ServiceStatus.degraded
     else:
         overall = ServiceStatus.ok
+
+    kw_index = getattr(request.app.state, "keyword_index", None)
+    keyword_index_size = kw_index.corpus_size if kw_index is not None else None
 
     logger.info("Status check", extra={"overall": overall, "components": {
         k: v.status for k, v in components.items()
@@ -164,6 +198,7 @@ async def status_check() -> StatusResponse:
         version=settings.app_version,
         environment=settings.environment,
         components=components,
+        keyword_index_size=keyword_index_size,
     )
 
 

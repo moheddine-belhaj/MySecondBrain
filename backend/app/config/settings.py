@@ -63,6 +63,16 @@ class Settings(BaseSettings):
     # Qdrant fetch limit = top_k × this factor (headroom for dedup losses).
     retrieval_over_fetch_factor: int = 3
 
+    # ── Hybrid search ─────────────────────────────────────────────────────────
+    # Default mode: "semantic" (vector only), "keyword" (BM25 only), "hybrid" (both).
+    hybrid_default_mode: str = "hybrid"
+    # RRF weights — control how much each signal influences the fused ranking.
+    # semantic_weight=1.0, keyword_weight=0.0 is equivalent to pure semantic.
+    hybrid_semantic_weight: float = 0.7
+    hybrid_keyword_weight: float = 0.3
+    # RRF k-parameter (60 is the Cormack et al. standard; lower = more top-rank bias).
+    hybrid_rrf_k: int = 60
+
     # ── Vault ─────────────────────────────────────────────────────────────────
     vault_path: str = "./vault"
 
