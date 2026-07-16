@@ -4,7 +4,7 @@
 
 A local-first, privacy-first **Retrieval-Augmented Generation (RAG)** system that turns an Obsidian markdown vault into a searchable, conversational knowledge base. It scans and chunks your notes, embeds and indexes them in a vector database, and answers questions grounded in your own content entirely on your own machine, with no data sent to third-party APIs.
 
-This project was primarily built as a **learning project** to understand how to design and build a production-style RAG system end to end — ingestion, chunking, embeddings, hybrid retrieval, prompt construction, LLM interaction, and evaluation  while following good software engineering practices (typed configuration, layered architecture, dependency injection, structured logging, security hardening, and test coverage).
+This project was primarily built as a **learning project** to understand how to design and build a production-style RAG system end to end ingestion, chunking, embeddings, hybrid retrieval, prompt construction, LLM interaction, and evaluation  while following good software engineering practices (typed configuration, layered architecture, dependency injection, structured logging, security hardening, and test coverage).
 
 ## Built With
 
