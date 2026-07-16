@@ -132,7 +132,7 @@ backend/app/
 ## Key Design Decisions
 
 **Why LlamaIndex for synthesis?**
-LlamaIndex's `get_response_synthesizer()` handles context packing and multi-chunk answer synthesis out of the box. The core retrieval pipeline is our own code — LlamaIndex is only used for the final synthesis step.
+LlamaIndex's `get_response_synthesizer()` handles context packing and multi-chunk answer synthesis out of the box. The core retrieval pipeline is our own code LlamaIndex is only used for the final synthesis step.
 
 **Why Qdrant?**
 Proper server with REST + gRPC, payload filtering, named vectors, and a snapshot API for backups. Chroma is dev-only; FAISS has no server mode.
@@ -150,4 +150,4 @@ Cosine scores (0–1) and BM25 scores (0–∞) are on different scales. RRF use
 Every setting is typed and validated at startup. `is_production` property enables environment-specific behaviour. No `os.getenv()` scattered through business logic.
 
 **Why a separate `/readiness` probe?**
-Docker HEALTHCHECK uses `/health` (liveness — is the process alive?). Load balancers and Kubernetes use `/readiness` (are dependencies up?). Separating them prevents a restart loop when Qdrant is temporarily unreachable: the container stays alive (liveness = ok) but is removed from rotation (readiness = fail).
+Docker HEALTHCHECK uses `/health` (liveness is the process alive?). Load balancers and Kubernetes use `/readiness` (are dependencies up?). Separating them prevents a restart loop when Qdrant is temporarily unreachable: the container stays alive (liveness = ok) but is removed from rotation (readiness = fail).
