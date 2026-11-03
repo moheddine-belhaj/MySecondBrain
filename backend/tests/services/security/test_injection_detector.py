@@ -105,7 +105,7 @@ class TestLowRiskPatterns:
 
 class TestCleanQueries:
     def test_clean_query_not_suspicious(self):
-        result = scan_text("who is moheddine?")
+        result = scan_text("who is alex?")
         assert result.is_suspicious is False
 
     def test_clean_query_risk_none(self):

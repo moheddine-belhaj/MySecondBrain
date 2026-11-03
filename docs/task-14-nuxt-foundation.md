@@ -222,7 +222,7 @@ Should report 0 errors.
 ### Required before first run
 
 ```bash
-cd /home/moheddine/Desktop/projects/llm/frontend
+cd path/to/llm/frontend
 npm install
 ```
 
