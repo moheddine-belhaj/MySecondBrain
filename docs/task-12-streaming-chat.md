@@ -66,7 +66,7 @@ interface StreamEvent {
 
 ```
 → {"type": "retrieval", "sources": [...], "candidate_count": 12}
-→ {"type": "delta", "delta": "Moheddine", "done": false}
+→ {"type": "delta", "delta": "Alex", "done": false}
 → {"type": "delta", "delta": " is a", "done": false}
   ... (one per token)
 → {"type": "done", "done": true, "session_id": "...", "sources": [...]}
@@ -233,8 +233,8 @@ Response:
 {
   "session_id": "...",
   "messages": [
-    {"role": "user",      "content": "who is moheddine?", "timestamp": 1719000000.0},
-    {"role": "assistant", "content": "Moheddine is ...",  "timestamp": 1719000001.2}
+    {"role": "user",      "content": "who is alex?", "timestamp": 1719000000.0},
+    {"role": "assistant", "content": "Alex is ...",  "timestamp": 1719000001.2}
   ],
   "created_at": 1719000000.0,
   "last_active": 1719000001.2
@@ -282,14 +282,14 @@ curl -s -X POST http://localhost:8000/api/v1/ingest | python3 -m json.tool
 ```bash
 curl -s -X POST http://localhost:8000/api/v1/chat/rag/stream \
   -H "Content-Type: application/json" \
-  -d '{"messages": [{"role": "user", "content": "who is moheddine?"}], "top_k": 3}'
+  -d '{"messages": [{"role": "user", "content": "who is alex?"}], "top_k": 3}'
 ```
 
 Expected output — three event types in order:
 ```
 data: {"type": "retrieval", "sources": [...], "candidate_count": 3, ...}
 
-data: {"type": "delta", "delta": "Moheddine", "done": false, ...}
+data: {"type": "delta", "delta": "Alex", "done": false, ...}
 data: {"type": "delta", "delta": " is a", "done": false, ...}
 ...
 data: {"type": "done", "done": true, "session_id": "uuid-here", "sources": [...], ...}
@@ -301,7 +301,7 @@ data: {"type": "done", "done": true, "session_id": "uuid-here", "sources": [...]
 # Turn 1 — save the session_id from the response
 SESSION=$(curl -s -X POST http://localhost:8000/api/v1/chat/rag \
   -H "Content-Type: application/json" \
-  -d '{"messages": [{"role": "user", "content": "who is moheddine?"}]}' \
+  -d '{"messages": [{"role": "user", "content": "who is alex?"}]}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['session_id'])")
 
 echo "Session: $SESSION"

@@ -7,7 +7,7 @@ from app.services.security.output_sanitizer import sanitize_output
 
 class TestSanitizeOutput:
     def test_clean_output_unchanged(self):
-        text = "Moheddine is a software engineer based in Germany. [1]"
+        text = "Alex is a software engineer based in Germany. [1]"
         result = sanitize_output(text)
         assert result.text == text
         assert result.was_sanitized is False
@@ -51,7 +51,7 @@ class TestSanitizeOutput:
         assert "[FILTERED: system information]" in result.text
 
     def test_was_sanitized_false_for_normal_answer(self):
-        text = "Based on your notes [1], Moheddine has worked at Schwarz IT."
+        text = "Based on your notes [1], Alex has worked at Acme Corp."
         result = sanitize_output(text)
         assert result.was_sanitized is False
 
@@ -70,8 +70,8 @@ class TestSanitizeOutput:
 
     def test_normal_rag_answer_with_citations_not_filtered(self):
         text = (
-            "Moheddine is a software engineer specialising in Go and TypeScript. [1] "
-            "He worked at Schwarz IT from May 2025. [2]"
+            "Alex is a software engineer specialising in Go and TypeScript. [1] "
+            "He worked at Acme Corp from May 2025. [2]"
         )
         result = sanitize_output(text)
         assert not result.was_sanitized
